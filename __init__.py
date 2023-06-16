@@ -3,10 +3,12 @@ import os
 from flask import Flask
 
 from flask import Flask, render_template_string, render_template, redirect, flash, request, Response
-from flask_wtf import CSRFProtect
+#from flask_wtf import CSRFProtect
+from flask_cors import CORS
 import config
 
 app = Flask(__name__)
+CORS(app)
 app.config.from_object(config)
 
 # Generate a nice key using secrets.token_urlsafe()

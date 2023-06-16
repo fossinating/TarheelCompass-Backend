@@ -49,9 +49,14 @@ class Class(Base):
     last_updated_from = Column(String(7))
 
     def to_json(self):
+        attributes = {}
+        for attribute in self.course.attrs:
+            attributes[attribute.label] = attribute.value
+
         return {
             "course_code": self.course_id,
             "section_code": self.class_section,
+            "title": self.title,
             "description": self.course.description,
             "schedules": [schedule.to_json() for schedule in self.schedules],
             "class_number": self.class_number,
@@ -64,7 +69,9 @@ class Class(Base):
             "waitlist_cap": self.waitlist_cap,
             "waitlist_total": self.waitlist_total,
             "min_enrollment": self.min_enrollment,
-            "attributes": self.attributes
+            "attributes": attributes,
+            "last_updated_at": self.last_updated_at,
+            "last_updated_from": self.last_updated_from
         }
 
     def get_timeslots(self):

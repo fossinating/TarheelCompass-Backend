@@ -4,7 +4,7 @@ import uuid
 
 from flask import render_template, Response, request
 #from flask_login import current_user
-from sqlalchemy import text
+from sqlalchemy import text, select
 
 from __init__ import app
 from database import db_session
@@ -76,11 +76,28 @@ def class_search():
         q = q.filter(Class.course_id.ilike(f"%{request.json.get('class_code')}%", escape="\\"))
     if request.json.get("component") != "any":
         q = q.filter(Class.component.ilike(f"%{request.json.get('component')}%", escape="\\"))
+    if request.json.get("term") != "":
+        q = q.filter(Class.term == request.json.get('term'))
 
     print(q.order_by(Class.course_id, Class.class_section).limit(50).all())
     return [result.to_json() for result in q.order_by(Class.course_id, Class.class_section).limit(50).all()]
 
 
+@app.route("/class_data", methods=["POST"])
+def class_data():
+    q = db_session.query(Class)
+
+    classes = {}
+
+    for _class_id in request.json["classes"]:
+        print(int(_class_id), request.json["term"])
+        classes[_class_id] = db_session.scalar(select(Class).where(
+            Class.class_number == int(_class_id) and Class.term == request.json["term"])).to_json()
+
+    return classes
+
+
+'''
 @app.route('/api/schedule', methods=["POST", "OPTIONS"])
 def schedule_maker():
     response_data = []
@@ -168,7 +185,7 @@ def user_schedule_endpoint():
         schedule.display_name = request.json["displayName"]
     db_session.commit()
     return current_user.to_json()
-
+'''
 
 app.jinja_env.globals.update(humanize_hour=humanize_hour)
 

@@ -11,3 +11,4 @@ psycopg2~=2.9.5
 zxcvbn~=4.4.28
 bleach~=6.0.0
 Werkzeug~=2.2.3
+flask-cors~=3.0.10

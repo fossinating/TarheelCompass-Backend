@@ -268,7 +268,7 @@ def process_pdf(file_name):
                     ))
                 else:
                     # if the class does already exist, update it with new information
-                    print(class_data["class_number"])
+                    #print(class_data["class_number"])
                     for schedule in class_obj.schedules:
                         db_session.delete(schedule)
 

@@ -25,9 +25,13 @@ FAB_PASSWORD_COMPLEXITY_ENABLED = True
 # Database information
 DB_TYPE = "postgresql"
 DB_USERNAME = "postgres"
-DB_PASSWORD = secrets.DB_PASSWORD
-DB_PATH = "localhost"
-DB_DATABASE_NAME = "coursilium"
+if getenv("ENVIRONMENT", "dev").lower() == "docker":
+    with open('/run/secrets/postgres_passwd') as f:
+        DB_PASSWORD = f.read().strip()
+else:
+    DB_PASSWORD = secrets.DB_PASSWORD
+DB_PATH = getenv("DB_PATH", "localhost")
+DB_DATABASE_NAME = getenv("DB_DATABASE_NAME", "coursilium")
 
 
 # Config for Flask-WTF Recaptcha necessary for user registration
