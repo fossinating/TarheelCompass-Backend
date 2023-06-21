@@ -79,11 +79,11 @@ def process_course_search_for_term(term):
             i += 2
 
         # check to see if the course exists, if not leave a warning
-        course_id = static_class_data["subject"] + " " + static_class_data["catalog number"]
-        if db_session.query(Course.code).filter_by(code=course_id).first() is None and course_id not in missing_courses:
-            missing_courses.append(course_id)
+        course_code = static_class_data["subject"] + " " + static_class_data["catalog number"]
+        if db_session.query(Course.code).filter_by(code=course_code).first() is None and course_code not in missing_courses:
+            missing_courses.append(course_code)
             db_session.add(Course(
-                code=course_id,
+                code=course_code,
                 title=class_data["course description"],
                 description="Generated from section data",
                 credits=class_data["credit hours"],
@@ -94,7 +94,7 @@ def process_course_search_for_term(term):
         class_number = safe_cast(class_data["class number"], int, -1)
 
         class_obj = db_session.query(Class).filter_by(
-            class_number=class_number, term=standardize_term(class_data["term"])).first()
+            number=class_number, term=standardize_term(class_data["term"])).first()
         if class_obj is None:
             if str(class_number) in missing_classes:
                 continue
@@ -104,9 +104,9 @@ def process_course_search_for_term(term):
             db_session.add(schedule)
 
             db_session.add(Class(
-                course_id=course_id,
-                class_section=class_data["section number"],
-                class_number=class_number,
+                course_code=course_code,
+                section=class_data["section number"],
+                number=class_number,
                 title=class_data["course description"],
                 term=standardize_term(class_data["term"]),
                 hours=safe_cast(class_data["credit hours"], float, -1.0),
@@ -146,6 +146,7 @@ def process_course_search_for_term(term):
             # update last updated info
             class_obj.last_updated_at = timestamp
             class_obj.last_updated_from = "search"
+        db_session.commit()
 
     print(f"Created entries for {len(missing_courses)} missing courses: " + ",".join(missing_courses))
     print(f"Created entries for {len(missing_classes)} missing classes: " + ",".join(missing_classes))
@@ -199,21 +200,21 @@ def process_pdf(file_name):
             continue
         if "_________________________________________________________________________________________________________" in line:
             if len(class_data) > 0:
-                course_id = class_data["dept"] + " " + class_data["catalog_number"]
+                course_code = class_data["dept"] + " " + class_data["catalog_number"]
                 # check to see if the course exists, if not leave a warning
 
                 if db_session.query(Course.code).filter_by(
-                        code=course_id).first() is None and course_id not in missing_courses:
-                    missing_courses.append(course_id)
+                        code=course_code).first() is None and course_code not in missing_courses:
+                    missing_courses.append(course_code)
                     db_session.add(Course(
-                        code=course_id,
+                        code=course_code,
                         title=class_data["title"],
                         credits=class_data["units"],
                         last_updated_at=timestamp,
                         last_updated_from="pdf"
                     ))
 
-                class_obj = db_session.query(Class).filter_by(class_number=class_data["class_number"],
+                class_obj = db_session.query(Class).filter_by(number=class_data["class_number"],
                                                               term=term).first()
 
                 if class_obj is None:
@@ -244,9 +245,9 @@ def process_pdf(file_name):
                     db_session.add_all(schedules)
 
                     db_session.add(Class(
-                        course_id=course_id,
-                        class_section=class_data["section"],
-                        class_number=class_data["class_number"],
+                        course_code=course_code,
+                        section=class_data["section"],
+                        number=class_data["class_number"],
                         title=class_data["title"],
                         component=class_data["component"],
                         topics=class_data["topics"],
@@ -300,8 +301,8 @@ def process_pdf(file_name):
                         )
                         schedules.append(schedule)
                     db_session.add_all(schedules)
-                    class_obj.course_id = course_id
-                    class_obj.class_section = class_data["section"]
+                    class_obj.course_code = course_code
+                    class_obj.section = class_data["section"]
                     class_obj.title = class_data["title"]
                     class_obj.component = class_data["component"]
                     class_obj.topics = class_data["topics"]
@@ -320,6 +321,7 @@ def process_pdf(file_name):
                     class_obj.last_updated_at = timestamp
                     class_obj.last_updated_from = "pdf"
             class_data = None
+            db_session.commit()
             continue
         # first line
         elif class_data is None:
@@ -456,6 +458,7 @@ def process_course_catalog():
                 course_obj.attrs = attributes
                 course_obj.last_updated_at = timestamp
                 course_obj.last_updated_from = "catalog"
+            db_session.close()
     db_session.add_all(add_queue)
 
 

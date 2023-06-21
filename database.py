@@ -5,9 +5,8 @@ from sqlalchemy.ext.declarative import declarative_base
 import config
 
 engine = create_engine(
-    f"{config.DB_TYPE}://{config.DB_USERNAME}:{config.DB_PASSWORD}@{config.DB_PATH}/{config.DB_DATABASE_NAME}")
-db_session = scoped_session(sessionmaker(autocommit=False,
-                                         autoflush=True,
+    f"{config.DB_TYPE}://{config.DB_USERNAME}:{config.DB_PASSWORD}@{config.DB_PATH}/{config.DB_DATABASE_NAME}")#, echo=True)
+db_session = scoped_session(sessionmaker(autoflush=True,
                                          bind=engine))
 Base = declarative_base()
 Base.query = db_session.query_property()

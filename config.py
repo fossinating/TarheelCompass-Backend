@@ -23,14 +23,14 @@ AUTH_USER_REGISTRATION_ROLE = 'Public'
 FAB_PASSWORD_COMPLEXITY_ENABLED = True
 
 # Database information
-DB_TYPE = "postgresql"
-DB_USERNAME = "postgres"
+DB_TYPE = "mysql+mysqlconnector"
+DB_USERNAME = "5zpqgmpmeeejzqegemu9"
 if getenv("ENVIRONMENT", "dev").lower() == "docker":
-    with open('/run/secrets/postgres_passwd') as f:
+    with open('/run/secrets/planetscale_passwd') as f:
         DB_PASSWORD = f.read().strip()
 else:
     DB_PASSWORD = secrets.DB_PASSWORD
-DB_PATH = getenv("DB_PATH", "localhost")
+DB_PATH = "us-east.connect.psdb.cloud"
 DB_DATABASE_NAME = getenv("DB_DATABASE_NAME", "coursilium")
 
 
