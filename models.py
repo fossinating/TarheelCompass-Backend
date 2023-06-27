@@ -1,19 +1,15 @@
-import uuid
-
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Table, Float, DateTime, Column, Integer, \
+    String, ForeignKey, Text, ForeignKeyConstraint, UniqueConstraint
+from sqlalchemy.orm import relationship
 
 from database import Base
-#from flask_security import UserMixin, RoleMixin
-from sqlalchemy import create_engine, Enum, Table, Float, Boolean, DateTime, Column, Integer, \
-    String, ForeignKey, Text, SmallInteger, ForeignKeyConstraint, UniqueConstraint
-from sqlalchemy.orm import relationship, backref
 
 schedule_instructor_join_table = Table("schedule_instructor_join_table",
                                        Base.metadata,
                                        Column("join_id", Integer, primary_key=True),
                                        Column("instructor_id", ForeignKey("instructor.id")),
                                        Column("schedule_id", ForeignKey("class_schedule.id")),
-                                       UniqueConstraint("instructor_id", "schedule_id"),)
+                                       UniqueConstraint("instructor_id", "schedule_id"), )
 
 
 class Instructor(Base):
@@ -150,6 +146,8 @@ class Course(Base):
     attrs = relationship("CourseAttribute")
     last_updated_at = Column(DateTime)
     last_updated_from = Column(String(7))
+
+
 '''
 
 class RolesUsers(Base):

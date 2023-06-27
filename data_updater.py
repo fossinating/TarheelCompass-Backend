@@ -1,19 +1,17 @@
-import dataclasses
 import datetime
+import filecmp
 import os
 import urllib.request
+from os.path import exists
 
 import requests as requests
-from tqdm import tqdm
 from bs4 import BeautifulSoup, NavigableString
-from urllib3.exceptions import NewConnectionError, MaxRetryError
 from tika import parser
-from os.path import exists
-import filecmp
+from tqdm import tqdm
 
+from database import db_session
 from models import Course, Class, ClassSchedule, Instructor, CourseAttribute
 from utilities import search_to_schedule, get_or_create_instructor, safe_cast, standardize_term
-from database import db_session
 
 
 def get_root_text(html_element):
