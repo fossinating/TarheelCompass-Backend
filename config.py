@@ -1,5 +1,5 @@
 from os import getenv
-import secrets
+import my_secrets
 
 #SECRET_KEY = secrets.SECRET_KEY
 #WTF_CSRF_SECRET_KEY = secrets.WTF_CSRF_SECRET_KEY
@@ -29,7 +29,7 @@ if getenv("ENVIRONMENT", "dev").lower() == "docker":
     with open('/run/secrets/postgres_passwd') as f:
         DB_PASSWORD = f.read().strip()
 else:
-    DB_PASSWORD = secrets.DB_PASSWORD
+    DB_PASSWORD = my_secrets.DB_PASSWORD
 DB_PATH = getenv("DB_PATH", "localhost")
 DB_DATABASE_NAME = getenv("DB_DATABASE_NAME", "coursilium")
 

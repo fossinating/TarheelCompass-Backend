@@ -238,4 +238,5 @@ cython_debug/
 #.idea/
 
 ssb-collection/
-secrets.py
+my_secrets.py
+/my_secrets.py
