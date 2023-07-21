@@ -4,5 +4,4 @@ requests~=2.27.1
 tqdm~=4.63.0
 beautifulsoup4~=4.11.2
 tika~=1.24
-#flask-security-too~=5.1.0
-#flask-mail~=0.9.1
+strawberry-graphql~=0.192.0

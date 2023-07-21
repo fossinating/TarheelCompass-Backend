@@ -6,12 +6,15 @@ from os.path import exists
 
 import requests as requests
 from bs4 import BeautifulSoup, NavigableString
+from sqlalchemy.orm import scoped_session
 from tika import parser
 from tqdm import tqdm
 
-from database import db_session
+from database import session_factory
 from models import Course, Class, ClassSchedule, Instructor, CourseAttribute
-from utilities import search_to_schedule, get_or_create_instructor, safe_cast, standardize_term
+from utilities import search_to_schedule, get_or_create_instructor, safe_cast, standardize_term, split_and_translate_time
+
+db_session = scoped_session(session_factory)
 
 
 def get_root_text(html_element):
@@ -124,7 +127,9 @@ def process_course_search_for_term(term):
             found_match = False
             # search through all of the schedules to find a matching one
             for schedule in class_obj.schedules:
-                if generated_schedule.days == schedule.days and generated_schedule.time == schedule.time:
+                if generated_schedule.days == schedule.days and \
+                        generated_schedule.start_time == schedule.start_time and \
+                        generated_schedule.end_time == schedule.end_time:
                     found_match = True
                     # if a match is found, check if the instructor is included
                     if class_data["primary instructor name(s)"] not in [instructor.name for instructor in schedule.instructors]:
@@ -231,11 +236,13 @@ def process_pdf(file_name):
                             if instructor not in instructors:
                                 instructors.append(instructor)
                         db_session.add_all(instructors)
+                        [start_time, end_time] = split_and_translate_time(schedule_data["time"])
                         schedule = ClassSchedule(
                             location=schedule_data["building"] + " " + schedule_data["room"],
                             instructors=instructors,
                             days=schedule_data["days"],
-                            time=schedule_data["time"],
+                            start_time=start_time,
+                            end_time=end_time,
                             term=term
                         )
                         schedules.append(schedule)
@@ -288,12 +295,14 @@ def process_pdf(file_name):
                             if instructor not in instructors:
                                 instructors.append(instructor)
                         db_session.add_all(instructors)
+                        [start_time, end_time] = split_and_translate_time(schedule_data["time"])
                         schedule = ClassSchedule(
                             class_reference=class_obj,
                             location=schedule_data["building"] + " " + schedule_data["room"],
                             instructors=instructors,
                             days=schedule_data["days"],
-                            time=schedule_data["time"],
+                            start_time=start_time,
+                            end_time=end_time,
                             term=term
                         )
                         schedules.append(schedule)
@@ -464,10 +473,10 @@ def update_unc_data():
     process_course_catalog()
     db_session.commit()
 
-    process_pdf_for_terms(["Spring 2023", "Fall 2023"])
+    process_pdf_for_terms(["Fall 2023"])
     db_session.commit()
 
-    process_course_search_for_terms(["2023 Spring", "2023 Fall"])
+    process_course_search_for_terms(["2023 Fall"])
     db_session.commit()
 
 

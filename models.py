@@ -1,6 +1,8 @@
+from typing import List
+
 from sqlalchemy import Table, Float, DateTime, Column, Integer, \
     String, ForeignKey, Text, ForeignKeyConstraint, UniqueConstraint
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 
 from database import Base
 
@@ -14,35 +16,35 @@ schedule_instructor_join_table = Table("schedule_instructor_join_table",
 
 class Instructor(Base):
     __tablename__ = "instructor"
-    id = Column(Integer, primary_key=True)
-    instructor_type = Column(String(6))
-    name = Column(Text)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instructor_type: Mapped[str] = mapped_column(String(6))
+    name: Mapped[str] = mapped_column(Text)
 
 
 class Class(Base):
     __tablename__ = "class"
-    course_id = Column(String(10), ForeignKey("course.code"))
-    course = relationship("Course")
-    class_section = Column(String(4))
-    class_number = Column(Integer, primary_key=True)
-    title = Column(Text)
-    component = Column(Text)
-    topics = Column(Text)
-    term = Column(String(8), primary_key=True)
-    hours = Column(Float)
-    meeting_dates = Column(String(30))
-    instruction_type = Column(String)
-    schedules = relationship("ClassSchedule")
-    enrollment_cap = Column(Integer)
-    enrollment_total = Column(Integer)
-    waitlist_cap = Column(Integer)
-    waitlist_total = Column(Integer)
-    min_enrollment = Column(Integer)
-    attributes = Column(Text)
-    combined_section_id = Column(Text)
-    equivalents = Column(Text)
-    last_updated_at = Column(DateTime)
-    last_updated_from = Column(String(7))
+    course_id: Mapped[str] = mapped_column(String(10), ForeignKey("course.code"))
+    course: Mapped["Course"] = relationship("Course")
+    class_section: Mapped[str] = mapped_column(String(4))
+    class_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(Text)
+    component: Mapped[str] = mapped_column(Text)
+    topics: Mapped[str] = mapped_column(Text)
+    term: Mapped[str] = mapped_column(String(8), primary_key=True)
+    hours: Mapped[float] = mapped_column(Float)
+    meeting_dates: Mapped[str] = mapped_column(String(30))
+    instruction_type: Mapped[str] = mapped_column(String)
+    schedules: Mapped[List["ClassSchedule"]] = relationship("ClassSchedule")
+    enrollment_cap: Mapped[int] = mapped_column(Integer)
+    enrollment_total: Mapped[int] = mapped_column(Integer)
+    waitlist_cap: Mapped[int] = mapped_column(Integer)
+    waitlist_total: Mapped[int] = mapped_column(Integer)
+    min_enrollment: Mapped[int] = mapped_column(Integer)
+    attributes: Mapped[str] = mapped_column(Text)
+    combined_section_id: Mapped[str] = mapped_column(Text)
+    equivalents: Mapped[str] = mapped_column(Text)
+    last_updated_at: Mapped[DateTime] = mapped_column(DateTime)
+    last_updated_from: Mapped[str] = mapped_column(String(7))
 
     def to_json(self):
         attributes = {}
@@ -106,16 +108,19 @@ class Class(Base):
 
 class ClassSchedule(Base):
     __tablename__ = "class_schedule"
-    id = Column(Integer, primary_key=True)
-    location = Column(Text)
-    instructors = relationship("Instructor", secondary=schedule_instructor_join_table)
-    days = Column(String(10))
-    time = Column(String(15))
-    class_number = Column(Integer)
-    term = Column(String(8))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    location: Mapped[str] = mapped_column(Text)
+    instructors: Mapped[List["Instructor"]] = relationship("Instructor", secondary=schedule_instructor_join_table)
+    days: Mapped[str] = mapped_column(String(10))
+    # start time and end time are in minutes since midnight
+    start_time: Mapped[int] = mapped_column(Integer)
+    end_time: Mapped[int] = mapped_column(Integer)
+    time: Mapped[str] = mapped_column(String(15))
+    class_number: Mapped[int] = mapped_column(Integer)
+    term: Mapped[str] = mapped_column(String(8))
     __table_args__ = (ForeignKeyConstraint((class_number, term), (Class.class_number, Class.term)), {})
-    class_reference = relationship("Class",
-                                   back_populates="schedules")
+    class_reference: Mapped["Class"] = relationship("Class",
+                                                    back_populates="schedules")
 
     def instructors_string(self):
         return "; ".join([instructor.name for instructor in self.instructors])
@@ -131,21 +136,21 @@ class ClassSchedule(Base):
 
 class CourseAttribute(Base):
     __tablename__ = "course_attributes"
-    id = Column(Integer, primary_key=True)
-    label = Column(Text)
-    value = Column(Text)
-    parent_course_code = Column(String(10), ForeignKey("course.code"))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(Text)
+    value: Mapped[str] = mapped_column(Text)
+    parent_course_code: Mapped[str] = mapped_column(String(10), ForeignKey("course.code"))
 
 
 class Course(Base):
     __tablename__ = "course"
-    code = Column(String(10), primary_key=True)
-    title = Column(Text)
-    credits = Column(String(20))
-    description = Column(Text)
-    attrs = relationship("CourseAttribute")
-    last_updated_at = Column(DateTime)
-    last_updated_from = Column(String(7))
+    code: Mapped[str] = mapped_column(String(10), primary_key=True)
+    title: Mapped[str] = mapped_column(Text)
+    credits: Mapped[str] = mapped_column(String(20))
+    description: Mapped[str] = mapped_column(Text)
+    attrs: Mapped[List["CourseAttribute"]] = relationship("CourseAttribute")
+    last_updated_at: Mapped[DateTime] = mapped_column(DateTime)
+    last_updated_from: Mapped[str] = mapped_column(String(7))
 
 
 '''
