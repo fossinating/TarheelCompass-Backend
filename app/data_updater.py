@@ -10,9 +10,9 @@ from sqlalchemy.orm import scoped_session
 from tika import parser
 from tqdm import tqdm
 
-from database import session_factory
-from models import Course, Class, ClassSchedule, Instructor, CourseAttribute
-from utilities import search_to_schedule, get_or_create_instructor, safe_cast, standardize_term, split_and_translate_time
+from app.database import session_factory
+from app.models import Course, Class, ClassSchedule, Instructor, CourseAttribute, ClassEnrollmentStamp
+from app.utilities import search_to_schedule, get_or_create_instructor, safe_cast, standardize_term, split_and_translate_time
 
 db_session = scoped_session(session_factory)
 
@@ -94,6 +94,19 @@ def process_course_search_for_term(term):
 
         class_number = safe_cast(class_data["class number"], int, -1)
 
+        # weird quirk is that some classes will be listed twice in the class search if they have inconsistent schedules, for example certain language classes
+        # dont record a stamp if the class has already been recorded, since theoretically the info should already be saved
+        if (db_session.query(ClassEnrollmentStamp).filter_by(
+            class_number=class_number, term=standardize_term(class_data["term"]), 
+            timestamp=timestamp, source="search").first() is None):
+            db_session.add(ClassEnrollmentStamp(
+                    class_number=class_number,
+                    term=standardize_term(class_data["term"]),
+                    enrollment_total=-1 * safe_cast(class_data["available seats"], int, -1),
+                    timestamp=timestamp,
+                    source="search"
+            ))
+
         class_obj = db_session.query(Class).filter_by(
             class_number=class_number, term=standardize_term(class_data["term"])).first()
         if class_obj is None:
@@ -114,7 +127,7 @@ def process_course_search_for_term(term):
                 meeting_dates=class_data["meeting dates"],
                 instruction_type=class_data["instruction mode"],
                 schedules=[schedule],
-                enrollment_total=-1 * safe_cast(class_data["available seats"], int, -1),
+                enrollment_total=-1 * safe_cast(class_data["available seats"], int, 1),
                 last_updated_at=timestamp,
                 last_updated_from="search"
             ))
@@ -139,6 +152,7 @@ def process_course_search_for_term(term):
 
             # if a matching schedule not found, add the generated one
             if not found_match:
+                db_session.add(generated_schedule)
                 class_obj.schedules.append(generated_schedule)
 
             # update enrollment total
@@ -193,11 +207,21 @@ def process_pdf(file_name):
 
     missing_courses = []
 
-    timestamp = datetime.datetime.utcnow()
     term = file_name.split("/")[1].split(".")[0]
     raw = parser.from_file(file_name)
+    run_date = None
+    run_time = None
+    generated_time = None
     class_data = {}
     for line in tqdm(raw["content"].strip().split("\n"), position=0):
+        if run_date == None and "Run Date:" in line:
+            run_date = line[line.index("Run Date:") + 9:].strip()
+        if run_time == None and "Run Time:" in line:
+            run_time = line[line.index("Run Time:") + 9:].strip()
+            generated_time = datetime.datetime.strptime(f"{run_date} {run_time}", "%m/%d/%Y %H:%M:%S")
+            if (db_session.query(ClassEnrollmentStamp).filter_by(timestamp = generated_time, source = "pdf").first() is not None):
+                print("Already have records for this pdf, skipping")
+                return
         if line.strip() == "":
             continue
         if "_________________________________________________________________________________________________________" in line:
@@ -212,12 +236,24 @@ def process_pdf(file_name):
                         code=course_id,
                         title=class_data["title"],
                         credits=class_data["units"],
-                        last_updated_at=timestamp,
+                        last_updated_at=generated_time,
                         last_updated_from="pdf"
                     ))
 
                 class_obj = db_session.query(Class).filter_by(class_number=class_data["class_number"],
                                                               term=term).first()
+
+                db_session.add(ClassEnrollmentStamp(
+                    class_number=class_data["class_number"],
+                    term=term,
+                    enrollment_cap=class_data["enrollment_cap"],
+                    enrollment_total=class_data["enrollment_total"],
+                    waitlist_cap=class_data["waitlist_cap"],
+                    waitlist_total=class_data["waitlist_total"],
+                    min_enrollment=class_data["min_enrollment"],
+                    timestamp=generated_time,
+                    source="pdf"
+                ))
 
                 if class_obj is None:
                     # if the class doesn't exist yet, create it and any necessary information
@@ -268,7 +304,7 @@ def process_pdf(file_name):
                         combined_section_id=class_data[
                             "combined_section_id"] if "combined_section_id" in class_data else "",
                         equivalents=class_data["equivalents"] if "equivalents" in class_data else "",
-                        last_updated_at=timestamp,
+                        last_updated_at=generated_time,
                         last_updated_from="pdf"
                     ))
                 else:
@@ -324,7 +360,7 @@ def process_pdf(file_name):
                     class_obj.combined_section_id = class_data[
                         "combined_section_id"] if "combined_section_id" in class_data else ""
                     class_obj.equivalents = class_data["equivalents"] if "equivalents" in class_data else ""
-                    class_obj.last_updated_at = timestamp
+                    class_obj.last_updated_at = generated_time
                     class_obj.last_updated_from = "pdf"
             class_data = None
             continue
@@ -467,7 +503,7 @@ def process_course_catalog():
 
 
 def update_unc_data():
-    from database import init_db
+    from app.database import init_db
     init_db()
 
     process_course_catalog()

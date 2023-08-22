@@ -1,15 +1,15 @@
 import datetime
-import typing
+from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from database import session_factory
-from models import Instructor as InstructorModel
-from models import Class as ClassModel
-from models import ClassSchedule as ClassScheduleModel
-from models import CourseAttribute as CourseAttributeModel
-from models import Course as CourseModel
+from app.database import session_factory
+from app.models import Instructor as InstructorModel
+from app.models import Class as ClassModel
+from app.models import ClassSchedule as ClassScheduleModel
+from app.models import CourseAttribute as CourseAttributeModel
+from app.models import Course as CourseModel
 
 import strawberry
 from strawberry.extensions import Extension
@@ -43,24 +43,24 @@ class Class:
     class_section: str
     class_number: int
     title: str
-    component: str
-    topics: str
+    component: Optional[str]
+    topics: Optional[str]
     term: str
     hours: float
-    meeting_dates: str
-    instruction_type: str
+    meeting_dates: Optional[str]
+    instruction_type: Optional[str]
 
     @strawberry.field
-    def schedules(self) -> typing.List["ClassSchedule"]:
+    def schedules(self) -> List["ClassSchedule"]:
         return [ClassSchedule.from_instance(schedule) for schedule in self.instance.schedules]
 
-    enrollment_cap: int
-    enrollment_total: int
-    waitlist_cap: int
-    waitlist_total: int
-    min_enrollment: int
-    combined_section_id: str
-    equivalents: str
+    enrollment_cap: Optional[int]
+    enrollment_total: Optional[int]
+    waitlist_cap: Optional[int]
+    waitlist_total: Optional[int]
+    min_enrollment: Optional[int]
+    combined_section_id: Optional[str]
+    equivalents: Optional[str]
     last_updated_at: datetime.datetime
     last_updated_from: str
 
@@ -95,7 +95,7 @@ class ClassSchedule:
     location: str
 
     @strawberry.field
-    def instructors(self) -> typing.List["Instructor"]:
+    def instructors(self) -> List["Instructor"]:
         return [Instructor.from_instance(instructor) for instructor in self.instance.instructors]
 
     days: str
@@ -134,10 +134,10 @@ class Course:
     code: str
     title: str
     credits: str
-    description: str
+    description: Optional[str]
 
     @strawberry.field
-    def attrs(self) -> typing.List["CourseAttribute"]:
+    def attrs(self) -> List["CourseAttribute"]:
         return [CourseAttribute.from_instance(attr) for attr in self.instance.attrs]
 
     last_updated_at: datetime.datetime
@@ -174,29 +174,32 @@ class Query:
     @strawberry.field(name="classes")
     def classes(self, info,
                 term: str,
-                course_id: typing.Optional[str] = None,
-                title: typing.Optional[str] = None,
-                class_section: typing.Optional[str] = None,
-                component: typing.Optional[str] = None,
-                instruction_type: typing.Optional[str] = None,
-                attrs: typing.Optional[typing.List[str]] = None,
-                instructor: typing.Optional[str] = None,
-                days: typing.Optional[typing.List[str]] = None,
-                starts_after: typing.Optional[str] = None,
-                ends_before: typing.Optional[str] = None) -> typing.List["Class"]:
+                class_numbers: Optional[List[int]] = None,
+                course_id: Optional[str] = None,
+                title: Optional[str] = None,
+                class_section: Optional[str] = None,
+                component: Optional[str] = None,
+                instruction_type: Optional[str] = None,
+                attrs: Optional[List[str]] = None,
+                instructor: Optional[str] = None,
+                days: Optional[List[str]] = None,
+                starts_after: Optional[str] = None,
+                ends_before: Optional[str] = None) -> List["Class"]:
         db: Session = info.context["db"]
         statement = select(ClassModel).where(ClassModel.term == term).\
             limit(query_limit).order_by(ClassModel.course_id, ClassModel.class_section)
+        if class_numbers is not None:
+            statement = statement.where(ClassModel.class_number.in_(class_numbers))
         if course_id is not None:
-            statement = statement.where(ClassModel.course_id.like(f"%{course_id}%"))
+            statement = statement.where(ClassModel.course_id.ilike(f"%{course_id}%"))
         if title is not None:
-            statement = statement.where(ClassModel.title.like(f"%{title}%"))
+            statement = statement.where(ClassModel.title.ilike(f"%{title}%"))
         if class_section is not None:
-            statement = statement.where(ClassModel.class_section.like(f"%{class_section}%"))
+            statement = statement.where(ClassModel.class_section.ilike(f"%{class_section}%"))
         if component is not None:
-            statement = statement.where(ClassModel.component == component)
+            statement = statement.where(ClassModel.component.lower() == component.lower())
         if instruction_type is not None:
-            statement = statement.where(ClassModel.instruction_type == instruction_type)
+            statement = statement.where(ClassModel.instruction_type.lower() == instruction_type.lower())
         if attrs is not None:
             statement = statement.where(ClassModel.attributes.any(CourseAttributeModel.value.in_(attrs)))
         if instructor is not None:

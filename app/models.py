@@ -1,10 +1,10 @@
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy import Table, Float, DateTime, Column, Integer, \
     String, ForeignKey, Text, ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 
-from database import Base
+from app.database import Base
 
 schedule_instructor_join_table = Table("schedule_instructor_join_table",
                                        Base.metadata,
@@ -24,25 +24,25 @@ class Instructor(Base):
 class Class(Base):
     __tablename__ = "class"
     course_id: Mapped[str] = mapped_column(String(10), ForeignKey("course.code"))
-    course: Mapped["Course"] = relationship("Course")
+    course: Mapped["Course"] = relationship("Course", cascade='save-update')
     class_section: Mapped[str] = mapped_column(String(4))
     class_number: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(Text)
-    component: Mapped[str] = mapped_column(Text)
-    topics: Mapped[str] = mapped_column(Text)
+    component: Mapped[Optional[str]] = mapped_column(Text)
+    topics: Mapped[Optional[str]] = mapped_column(Text)
     term: Mapped[str] = mapped_column(String(8), primary_key=True)
     hours: Mapped[float] = mapped_column(Float)
-    meeting_dates: Mapped[str] = mapped_column(String(30))
-    instruction_type: Mapped[str] = mapped_column(String)
-    schedules: Mapped[List["ClassSchedule"]] = relationship("ClassSchedule")
-    enrollment_cap: Mapped[int] = mapped_column(Integer)
-    enrollment_total: Mapped[int] = mapped_column(Integer)
-    waitlist_cap: Mapped[int] = mapped_column(Integer)
-    waitlist_total: Mapped[int] = mapped_column(Integer)
-    min_enrollment: Mapped[int] = mapped_column(Integer)
-    attributes: Mapped[str] = mapped_column(Text)
-    combined_section_id: Mapped[str] = mapped_column(Text)
-    equivalents: Mapped[str] = mapped_column(Text)
+    meeting_dates: Mapped[Optional[str]] = mapped_column(String(30))
+    instruction_type: Mapped[Optional[str]] = mapped_column(String)
+    schedules: Mapped[List["ClassSchedule"]] = relationship("ClassSchedule", cascade='all,delete-orphan')
+    enrollment_cap: Mapped[Optional[int]] = mapped_column(Integer)
+    enrollment_total: Mapped[Optional[int]] = mapped_column(Integer)
+    waitlist_cap: Mapped[Optional[int]] = mapped_column(Integer)
+    waitlist_total: Mapped[Optional[int]] = mapped_column(Integer)
+    min_enrollment: Mapped[Optional[int]] = mapped_column(Integer)
+    attributes: Mapped[Optional[str]] = mapped_column(Text)
+    combined_section_id: Mapped[Optional[str]] = mapped_column(Text)
+    equivalents: Mapped[Optional[str]] = mapped_column(Text)
     last_updated_at: Mapped[DateTime] = mapped_column(DateTime)
     last_updated_from: Mapped[str] = mapped_column(String(7))
 
@@ -110,17 +110,16 @@ class ClassSchedule(Base):
     __tablename__ = "class_schedule"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     location: Mapped[str] = mapped_column(Text)
-    instructors: Mapped[List["Instructor"]] = relationship("Instructor", secondary=schedule_instructor_join_table)
+    instructors: Mapped[List["Instructor"]] = relationship("Instructor", secondary=schedule_instructor_join_table, cascade='save-update')
     days: Mapped[str] = mapped_column(String(10))
     # start time and end time are in minutes since midnight
     start_time: Mapped[int] = mapped_column(Integer)
     end_time: Mapped[int] = mapped_column(Integer)
-    time: Mapped[str] = mapped_column(String(15))
     class_number: Mapped[int] = mapped_column(Integer)
     term: Mapped[str] = mapped_column(String(8))
     __table_args__ = (ForeignKeyConstraint((class_number, term), (Class.class_number, Class.term)), {})
     class_reference: Mapped["Class"] = relationship("Class",
-                                                    back_populates="schedules")
+                                                    back_populates="schedules", cascade='save-update')
 
     def instructors_string(self):
         return "; ".join([instructor.name for instructor in self.instructors])
@@ -147,10 +146,23 @@ class Course(Base):
     code: Mapped[str] = mapped_column(String(10), primary_key=True)
     title: Mapped[str] = mapped_column(Text)
     credits: Mapped[str] = mapped_column(String(20))
-    description: Mapped[str] = mapped_column(Text)
-    attrs: Mapped[List["CourseAttribute"]] = relationship("CourseAttribute")
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    attrs: Mapped[List["CourseAttribute"]] = relationship("CourseAttribute", cascade='all,delete-orphan')
     last_updated_at: Mapped[DateTime] = mapped_column(DateTime)
     last_updated_from: Mapped[str] = mapped_column(String(7))
+
+
+class ClassEnrollmentStamp(Base):
+    __tablename__ = "class_enrollment_stamp"
+    class_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    term: Mapped[str] = mapped_column(String(8), primary_key=True)
+    enrollment_cap: Mapped[Optional[int]] = mapped_column(Integer)
+    enrollment_total: Mapped[Optional[int]] = mapped_column(Integer)
+    waitlist_cap: Mapped[Optional[int]] = mapped_column(Integer)
+    waitlist_total: Mapped[Optional[int]] = mapped_column(Integer)
+    min_enrollment: Mapped[Optional[int]] = mapped_column(Integer)
+    timestamp: Mapped[DateTime] = mapped_column(DateTime, primary_key=True)
+    source: Mapped[str] = mapped_column(String(7), primary_key=True)
 
 
 '''

@@ -1,5 +1,4 @@
-from database import db_session
-from models import ClassSchedule, Instructor
+from app.models import ClassSchedule, Instructor
 
 
 def safe_cast(val, to_type, default=None):
@@ -36,6 +35,7 @@ def humanize_hour(hour):
 
 
 def get_or_create_instructor(name):
+    from app.data_updater import db_session
     instructor = db_session.query(Instructor).filter_by(name=name).first()
     if instructor is None:
         instructor = Instructor(
