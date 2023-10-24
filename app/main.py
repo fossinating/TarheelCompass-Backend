@@ -30,6 +30,7 @@ app.include_router(graphql_app, prefix="/graphql")
 async def terms():
     return [
         {"id": "FALL2023", "name": "Fall 2023", "default": True},
+        {"id": "SPRI2024", "name": "Spring 2023", "default": True},
         ]
 
 
