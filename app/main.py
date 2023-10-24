@@ -8,8 +8,8 @@ from strawberry.fastapi import GraphQLRouter
 app = FastAPI()
 
 origins = [
-    "http://localhost",
-    "courses.fossinating.com",
+    "http://localhost:3000",
+    "https://tarheelcompass.com",
     "*",
 ]
 
