@@ -55,7 +55,10 @@ def standardize_term(term):
         "2023 Spring": "SPRI2023",
         "Fall 2023": "FALL2023",
         "2023 Fall": "FALL2023",
-        "2239": "FALL2023"
+        "2239": "FALL2023",
+        "2242": "SPRI2024",
+        "Spring 2024": "SPRI2024",
+        "2024 Spring": "SPRI2024"
     }
     return data[term]
 

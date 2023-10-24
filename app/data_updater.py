@@ -509,10 +509,10 @@ def update_unc_data():
     process_course_catalog()
     db_session.commit()
 
-    process_pdf_for_terms(["Fall 2023"])
+    process_pdf_for_terms(["Fall 2023", "Spring 2024"])
     db_session.commit()
 
-    process_course_search_for_terms(["2023 Fall"])
+    process_course_search_for_terms(["2023 Fall", "2024 Spring"])
     db_session.commit()
 
 
