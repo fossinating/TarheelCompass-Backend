@@ -10,7 +10,6 @@ app = FastAPI()
 origins = [
     "http://localhost:3000",
     "https://tarheelcompass.com",
-    "*",
 ]
 
 app.add_middleware(
@@ -29,7 +28,7 @@ app.include_router(graphql_app, prefix="/graphql")
 @app.get("/terms")
 async def terms():
     return [
-        {"id": "FALL2023", "name": "Fall 2023", "default": True},
+        {"id": "FALL2023", "name": "Fall 2023", "default": False},
         {"id": "SPRI2024", "name": "Spring 2023", "default": True},
         ]
 
