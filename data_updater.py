@@ -7,12 +7,11 @@ from os.path import exists
 import requests as requests
 from bs4 import BeautifulSoup, NavigableString
 from sqlalchemy.orm import scoped_session
-from tika import parser
 from tqdm import tqdm
 
 from database import session_factory
-from models import Course, Class, ClassSchedule, Instructor, CourseAttribute
-from utilities import search_to_schedule, get_or_create_instructor, safe_cast, standardize_term, split_and_translate_time
+from models import Course, Class, CourseAttribute
+from utilities import search_to_schedule, get_or_create_instructor, safe_cast, standardize_term
 
 db_session = scoped_session(session_factory)
 
@@ -46,6 +45,58 @@ subjects = (
     "RADI", "RECR", "RELI", "ROML", "RUSS", "SPHG", "SLAV", "SOWO", "SOCI", "SPAN", "SPHS", "STOR", "ARTS", "TOXC",
     "TURK",
     "WOLO", "WGST", "VIET")
+
+
+# gets data about courses from the catalog
+def process_course_catalog():
+    add_queue = []
+    timestamp = datetime.datetime.utcnow()
+    for subject in tqdm(subjects, position=0, leave=False, desc="Subjects"):
+        response = requests.get(f"https://catalog.unc.edu/courses/{subject.lower()}/")
+
+        soup = BeautifulSoup(str(response.content).replace("\\n", "")
+                             .replace("\\xc2\\xa0", " ").encode('utf-8').decode("unicode_escape"), "html.parser")
+
+        for course in tqdm(soup.select(".courseblock"), position=1, leave=False, desc=subject):
+            attributes = []
+            attribute_codes = ["grading_status", "making_connections", "requisites", "repeat_rules", "idea_action",
+                               "same_as", "global_language"]
+
+            for attribute_code in attribute_codes:
+                attribute_block = course.select_one(".detail-" + attribute_code)
+                if attribute_block is not None:
+                    strong_text = attribute_block.select_one("strong").text
+                    other_text = attribute_block.text.replace(strong_text, "")
+                    attributes.append(CourseAttribute(
+                        label=strong_text.strip().strip(".:"),
+                        value=other_text.strip().strip(".")))
+
+            course_obj = db_session.query(Course).filter_by(
+                code=course.select_one(".detail-code strong").text.strip(".")).first()
+            add_queue.extend(attributes)
+
+            if course_obj is None:
+                add_queue.append(Course(
+                    code=course.select_one(".detail-code strong").text.strip("."),
+                    title=course.select_one(".detail-title strong").text.strip("."),
+                    credits=course.select_one(".detail-hours strong").text.strip(".").replace(" Credits", ""),
+                    description=("" if course.select_one(".courseblockextra") is None else
+                                 course.select_one(".courseblockextra").text.strip(".")),
+                    attrs=attributes,
+                    last_updated_at=timestamp,
+                    last_updated_from="catalog"
+                ))
+            else:
+                for attribute in course_obj.attrs:
+                    db_session.delete(attribute)
+                course_obj.title = course.select_one(".detail-title strong").text.strip(".")
+                course_obj.credits = course.select_one(".detail-hours strong").text.strip(".").replace(" Credits", "")
+                course_obj.description = ("" if course.select_one(".courseblockextra") is None else
+                                          course.select_one(".courseblockextra").text.strip("."))
+                course_obj.attrs = attributes
+                course_obj.last_updated_at = timestamp
+                course_obj.last_updated_from = "catalog"
+    db_session.add_all(add_queue)
 
 
 def process_course_search_for_terms(terms):
@@ -154,331 +205,34 @@ def process_course_search_for_term(term):
     print(f"Created entries for {len(missing_classes)} missing classes: " + ",".join(missing_classes))
 
 
-def process_pdf_for_terms(terms):
+# Read through the directory of class listings
+def process_pdfs():
     print("Getting most up to date pdf")
 
     response = requests.get("https://registrar.unc.edu/courses/schedule-of-classes/directory-of-classes-2/")
 
     soup = BeautifulSoup(response.content, "html.parser")
 
-    for link in soup.select("div > ul > li > a"):
-        if link.text in terms:
-            source = link["href"]
-            term = source.split("/")[-1].split("-")[0]
-            filename = "ssb-collection/" + standardize_term(term) + ".pdf"
-            temp_filename = "temp/" + standardize_term(term) + ".pdf"
-            if not exists("temp/"):
-                os.mkdir("temp")
-            if not exists("ssb-collection/"):
-                os.mkdir("ssb-collection")
-            if exists(temp_filename):
-                os.remove(temp_filename)
-            print(f"Downloading {filename} from {source}")
-            urllib.request.urlretrieve(source, temp_filename)
+    for link in soup.select(".main div > ul > li > a"):
+        source = link["href"]
+        term = source.split("/")[-1].split("-")[0]
+        filename = "ssb-collection/" + standardize_term(term) + ".pdf"
+        temp_filename = "temp/" + standardize_term(term) + ".pdf"
+        if not exists("temp/"):
+            os.mkdir("temp")
+        if not exists("ssb-collection/"):
+            os.mkdir("ssb-collection")
+        if exists(temp_filename):
+            os.remove(temp_filename)
+        print(f"Downloading {filename} from {source}")
+        urllib.request.urlretrieve(source, temp_filename)
 
-            if True or not exists(filename) or not filecmp.cmp(filename, temp_filename):
-                print("File changed, analysing new PDF")
-                if exists(filename):
-                    os.remove(filename)
-                os.rename(temp_filename, filename)
-                process_pdf(filename)
-            else:
-                print(f"File unchanged")
-                os.remove(temp_filename)
-
-
-# TODO: Rewrite to cache everything and then input at the very end
-def process_pdf(file_name):
-    print(f"Processing {file_name}")
-
-    missing_courses = []
-
-    timestamp = datetime.datetime.utcnow()
-    term = file_name.split("/")[1].split(".")[0]
-    raw = parser.from_file(file_name)
-    class_data = {}
-    for line in tqdm(raw["content"].strip().split("\n"), position=0):
-        if line.strip() == "":
-            continue
-        if "_________________________________________________________________________________________________________" in line:
-            if len(class_data) > 0:
-                course_id = class_data["dept"] + " " + class_data["catalog_number"]
-                # check to see if the course exists, if not leave a warning
-
-                if db_session.query(Course.code).filter_by(
-                        code=course_id).first() is None and course_id not in missing_courses:
-                    missing_courses.append(course_id)
-                    db_session.add(Course(
-                        code=course_id,
-                        title=class_data["title"],
-                        credits=class_data["units"],
-                        last_updated_at=timestamp,
-                        last_updated_from="pdf"
-                    ))
-
-                class_obj = db_session.query(Class).filter_by(class_number=class_data["class_number"],
-                                                              term=term).first()
-
-                if class_obj is None:
-                    # if the class doesn't exist yet, create it and any necessary information
-                    schedules = []
-                    for schedule_data in class_data["schedules"]:
-                        #print(schedule_data)
-                        instructors = []
-
-                        for instructor_data in schedule_data["instructors"]:
-                            instructor = db_session.query(Instructor).filter_by(name=instructor_data["name"]).first()
-                            if instructor is None:
-                                instructor = Instructor(
-                                    name=instructor_data["name"],
-                                    instructor_type=instructor_data["type"]
-                                )
-                            if instructor not in instructors:
-                                instructors.append(instructor)
-                        db_session.add_all(instructors)
-                        [start_time, end_time] = split_and_translate_time(schedule_data["time"])
-                        schedule = ClassSchedule(
-                            location=schedule_data["building"] + " " + schedule_data["room"],
-                            instructors=instructors,
-                            days=schedule_data["days"],
-                            start_time=start_time,
-                            end_time=end_time,
-                            term=term
-                        )
-                        schedules.append(schedule)
-                    db_session.add_all(schedules)
-
-                    db_session.add(Class(
-                        course_id=course_id,
-                        class_section=class_data["section"],
-                        class_number=class_data["class_number"],
-                        title=class_data["title"],
-                        component=class_data["component"],
-                        topics=class_data["topics"],
-                        term=term,
-                        hours=class_data["units"],
-                        # meeting dates, instruction type not provided
-                        schedules=schedules,
-                        enrollment_cap=class_data["enrollment_cap"],
-                        enrollment_total=class_data["enrollment_total"],
-                        waitlist_cap=class_data["waitlist_cap"],
-                        waitlist_total=class_data["waitlist_total"],
-                        min_enrollment=class_data["min_enrollment"],
-                        attributes=class_data["attributes"] if "attributes" in class_data else "",
-                        combined_section_id=class_data[
-                            "combined_section_id"] if "combined_section_id" in class_data else "",
-                        equivalents=class_data["equivalents"] if "equivalents" in class_data else "",
-                        last_updated_at=timestamp,
-                        last_updated_from="pdf"
-                    ))
-                else:
-                    # if the class does already exist, update it with new information
-                    #print(class_data["class_number"])
-                    for schedule in class_obj.schedules:
-                        db_session.delete(schedule)
-
-                    schedules = []
-                    for schedule_data in class_data["schedules"]:
-                        instructors = []
-                        # print(schedule_data["instructors"])
-
-                        for instructor_data in schedule_data["instructors"]:
-                            instructor = db_session.query(Instructor).filter_by(
-                                name=instructor_data["name"]).first()
-                            if instructor is None:
-                                if len(instructor_data["type"]) > 5:
-                                    print(instructor_data["type"])
-                                instructor = Instructor(
-                                    name=instructor_data["name"],
-                                    instructor_type=instructor_data["type"]
-                                )
-                            if instructor not in instructors:
-                                instructors.append(instructor)
-                        db_session.add_all(instructors)
-                        [start_time, end_time] = split_and_translate_time(schedule_data["time"])
-                        schedule = ClassSchedule(
-                            class_reference=class_obj,
-                            location=schedule_data["building"] + " " + schedule_data["room"],
-                            instructors=instructors,
-                            days=schedule_data["days"],
-                            start_time=start_time,
-                            end_time=end_time,
-                            term=term
-                        )
-                        schedules.append(schedule)
-                    db_session.add_all(schedules)
-                    class_obj.course_id = course_id
-                    class_obj.class_section = class_data["section"]
-                    class_obj.title = class_data["title"]
-                    class_obj.component = class_data["component"]
-                    class_obj.topics = class_data["topics"]
-                    class_obj.hours = class_data["units"]
-                    # meeting dates, instruction type not provided
-                    class_obj.schedules = schedules
-                    class_obj.enrollment_cap = class_data["enrollment_cap"]
-                    class_obj.enrollment_total = class_data["enrollment_total"]
-                    class_obj.waitlist_cap = class_data["waitlist_cap"]
-                    class_obj.waitlist_total = class_data["waitlist_total"]
-                    class_obj.min_enrollment = class_data["min_enrollment"]
-                    class_obj.attributes = class_data["attributes"] if "attributes" in class_data else ""
-                    class_obj.combined_section_id = class_data[
-                        "combined_section_id"] if "combined_section_id" in class_data else ""
-                    class_obj.equivalents = class_data["equivalents"] if "equivalents" in class_data else ""
-                    class_obj.last_updated_at = timestamp
-                    class_obj.last_updated_from = "pdf"
-            class_data = None
-            continue
-        # first line
-        elif class_data is None:
-            if line.startswith("Report"):
-                class_data = {}
-                continue
-            line_data = [x for x in line.split(" ") if x.strip()]
-            class_data = {}
-
-            data_stage = ["dept", "catalog_number", "section", "class_number", "title", "component", "units", "topics"]
-            altered_line = line.strip()
-            while len(altered_line) > 0 and len(data_stage) > 0:
-                if data_stage[0] == "title":
-                    for component in ["Lecture", "Lab", "Recitation", "Independent Study", "Practicum",
-                                      "Thesis Research", "Clinical", "Correspondence", "Field Work",
-                                      "Inter_Institutional"]:
-                        if component in altered_line:
-                            class_data["title"] = altered_line[:altered_line.index(component)].strip()
-                            data_stage.pop(0)
-                            class_data["component"] = component
-                            altered_line = altered_line[altered_line.index(component) + len(component):].strip()
-                            break
-                elif data_stage[0] == "units":
-                    j = 0
-                    while j < len(altered_line):
-                        if not altered_line[j].isnumeric() and altered_line[j] not in [" ", "_"]:
-                            break
-                        j += 1
-                    class_data["units"] = altered_line[:j].strip()
-                    altered_line = altered_line[j:].strip()
-                else:
-                    if " " in altered_line:
-                        class_data[data_stage[0]] = altered_line[:altered_line.index(" ")]
-                        altered_line = altered_line[altered_line.index(" "):].strip()
-                    else:
-                        class_data[data_stage[0]] = altered_line
-                        altered_line = ""
-                data_stage.pop(0)
-            continue
-        elif line.startswith("Bldg:"):
-            def find_nth(haystack, needle, n):
-                start = haystack.find(needle)
-                while start >= 0 and n > 1:
-                    start = haystack.find(needle, start + len(needle))
-                    n -= 1
-                return start
-
-            schedule = {"building": line[len("Bldg: "):line.index("Room: ")],
-                        "room": line[line.index("Room:") + len("Room:"):line.index("Days:")].strip(),
-                        "days": line[line.index("Days:") + len("Days:"):line.index("Time:")].strip(),
-                        "time": line[line.index("Time:") + len("Time:"):
-                                     find_nth(line[line.index("Time:") + len("Time:"):].strip(), ":", 2)
-                                     + line.index("Time:") + len("Time: ") + 4].strip()}
-            if "TBA" in schedule["time"]:
-                schedule["time"] = "TBA"
-            if "schedules" not in class_data:
-                class_data["schedules"] = []
-            class_data["schedules"].append(schedule)
-        elif "Instructor:" in line and not line.startswith("Instructor:") and "enrollment_cap" not in class_data:
-            if "schedules" not in class_data:
-                print("Major error occurred!!!")
-            if "instructors" not in class_data["schedules"][len(class_data["schedules"]) - 1]:
-                class_data["schedules"][len(class_data["schedules"]) - 1]["instructors"] = []
-            class_data["schedules"][len(class_data["schedules"]) - 1]["instructors"].append({
-                "type": line[:line.index(" ")],
-                "name": line[line.index("Instructor:") + len("Instructor:"):].strip()
-            })
-        elif line.startswith("Class Enrl Cap:"):
-            class_data["enrollment_cap"] = line[len("Class Enrl Cap:"):line.index("Class Enrl Tot:")].strip()
-            class_data["enrollment_total"] = line[line.index("Class Enrl Tot:") + len("Class Enrl Tot:"):line.index(
-                "Class Wait Cap:")].strip()
-            class_data["waitlist_cap"] = line[line.index("Class Wait Cap:") + len("Class Wait Cap:"):line.index(
-                "Class Wait Tot:")].strip()
-            class_data["waitlist_total"] = line[line.index("Class Wait Tot:") + len("Class Wait Tot:"):line.index(
-                "Class Min Enrl:")].strip()
-            class_data["min_enrollment"] = \
-            line[line.index("Class Min Enrl:") + len("Class Min Enrl:"):].strip().split()[0]
-        elif line.startswith("Attributes"):
-            class_data["attributes"] = line[len("Attributes: "):]
-        elif line.startswith("Combined Section ID"):
-            class_data["combined_section_id"] = line[len("Combined Section ID:"):].strip()
-        elif line.startswith("Class Equivalents"):
-            class_data["equivalents"] = line[len("Class Equivalents:"):].strip()
-    print(f"Created entries for {len(missing_courses)} missing courses: " + ",".join(missing_courses))
-
-
-# gets data about courses from the catalog
-def process_course_catalog():
-    max_length = 0
-    add_queue = []
-    timestamp = datetime.datetime.utcnow()
-    for subject in tqdm(subjects, position=0, leave=False, desc="Subjects"):
-        response = requests.get(f"https://catalog.unc.edu/courses/{subject.lower()}/")
-
-        soup = BeautifulSoup(str(response.content).replace("\\n", "")
-                             .replace("\\xc2\\xa0", " ").encode('utf-8').decode("unicode_escape"), "html.parser")
-
-        for course in tqdm(soup.select(".courseblock"), position=1, leave=False, desc=subject):
-            attributes = []
-            attribute_codes = ["grading_status", "making_connections", "requisites", "repeat_rules", "idea_action",
-                               "same_as", "global_language"]
-
-            for attribute_code in attribute_codes:
-                attribute_block = course.select_one(".detail-" + attribute_code)
-                if attribute_block is not None:
-                    strong_text = attribute_block.select_one("strong").text
-                    other_text = attribute_block.text.replace(strong_text, "")
-                    attributes.append(CourseAttribute(
-                        label=strong_text.strip().strip(".:"),
-                        value=other_text.strip().strip(".")))
-
-            course_obj = db_session.query(Course).filter_by(
-                code=course.select_one(".detail-code strong").text.strip(".")).first()
-            add_queue.extend(attributes)
-
-            if course_obj is None:
-                add_queue.append(Course(
-                    code=course.select_one(".detail-code strong").text.strip("."),
-                    title=course.select_one(".detail-title strong").text.strip("."),
-                    credits=course.select_one(".detail-hours strong").text.strip(".").replace(" Credits", ""),
-                    description=("" if course.select_one(".courseblockextra") is None else
-                                 course.select_one(".courseblockextra").text.strip(".")),
-                    attrs=attributes,
-                    last_updated_at=timestamp,
-                    last_updated_from="catalog"
-                ))
-            else:
-                for attribute in course_obj.attrs:
-                    db_session.delete(attribute)
-                course_obj.title = course.select_one(".detail-title strong").text.strip(".")
-                course_obj.credits = course.select_one(".detail-hours strong").text.strip(".").replace(" Credits", "")
-                course_obj.description = ("" if course.select_one(".courseblockextra") is None else
-                                          course.select_one(".courseblockextra").text.strip("."))
-                course_obj.attrs = attributes
-                course_obj.last_updated_at = timestamp
-                course_obj.last_updated_from = "catalog"
-    db_session.add_all(add_queue)
-
-
-def update_unc_data():
-    from database import init_db
-    init_db()
-
-    process_course_catalog()
-    db_session.commit()
-
-    process_pdf_for_terms(["Fall 2023"])
-    db_session.commit()
-
-    process_course_search_for_terms(["2023 Fall"])
-    db_session.commit()
-
-
-if __name__ == "__main__":
-    update_unc_data()
+        if True or not exists(filename) or not filecmp.cmp(filename, temp_filename):
+            print("File changed, analysing new PDF")
+            if exists(filename):
+                os.remove(filename)
+            os.rename(temp_filename, filename)
+            process_pdf(filename)
+        else:
+            print(f"File unchanged")
+            os.remove(temp_filename)

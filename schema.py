@@ -188,11 +188,11 @@ class Query:
         statement = select(ClassModel).where(ClassModel.term == term).\
             limit(query_limit).order_by(ClassModel.course_id, ClassModel.class_section)
         if course_id is not None:
-            statement = statement.where(ClassModel.course_id.like(f"%{course_id}%"))
+            statement = statement.where(ClassModel.course_id.ilike(f"%{course_id}%"))
         if title is not None:
-            statement = statement.where(ClassModel.title.like(f"%{title}%"))
+            statement = statement.where(ClassModel.title.ilike(f"%{title}%"))
         if class_section is not None:
-            statement = statement.where(ClassModel.class_section.like(f"%{class_section}%"))
+            statement = statement.where(ClassModel.class_section.ilike(f"%{class_section}%"))
         if component is not None:
             statement = statement.where(ClassModel.component == component)
         if instruction_type is not None:
