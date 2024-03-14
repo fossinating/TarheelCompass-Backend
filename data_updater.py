@@ -219,6 +219,7 @@ pdf_split_line = "______________________________________________________________
 
 
 class PDFParser:
+    # TODO: complete this list
     """
     Valid states:
 
@@ -228,6 +229,7 @@ class PDFParser:
     
     """
 
+    # TODO: comprehensive documentation/comments
 
     def __init__(self, term: str, source: str):
         self.term = term
@@ -235,6 +237,7 @@ class PDFParser:
         self.reset_state()
         self.db_session = scoped_session(session_factory)
         self.missing_courses = []
+        self.errors = 0
     
     def reset_state(self):
         self.state = "waiting"
@@ -302,16 +305,21 @@ class PDFParser:
 
                 for page in tqdm(reader.pages, position=1, leave=False, desc="Pages"):
                     for line in tqdm(page.extract_text(extraction_mode="layout").split("\n"), position=2, leave=False, desc="Lines"):
+                        if self.errors >= 5:
+                            logger.error("Reached 5 errors, something serious must be wrong, killing parse attempt.")
+                            return
                         try:
                             self.parse_line(line)
                         except (Exception) as e:
                             logger.error(f"Failed to parse line with reason {e}\nLine:`{line}`")
+                            self.errors += 1
                             self.reset_state()
                             raise e
 
                 # Update the last_updated value
                 # This is done at the very end intentionally so that it won't get updated if we run into any issues
                 term_data_source.last_updated = self.source_datetime
+                self.db_session.commit()
         
     def parse_line(self, line: str):
         if self.state == "waiting":
@@ -326,13 +334,9 @@ class PDFParser:
                 return
             if line[:2] != "  ":
                 logger.error(f"Looking for first_line but got `{line}`")
+                self.errors += 1
                 self.reset_state()
                 return
-            # FIXME: Different semesters have different spacing and indices for everything, switch to .index to find stuff(or maybe regex?)
-            # Yeah let's just use regex. God I hate this
-            # It's 5am and I just found out I'm going to have to almost entirely re-write this entire thing god damn this sucks.
-            # Anyways. At least this will give me a chance to go back and comment throughout things and explain how things work
-            # because God knows I will not remember how the regex works in the future.
             match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
                                \ {1,4}(?P<subject>[A-Z]{3,4}) # Look for 1-4 spaces, then find a subject that is 3-4 of [A-z] (case-insensitive letter)
                                \ {6,7}(?P<course_num>\S{2,3}) # Look for 6-7 spaces, then find a course_num that is 2-3 non-whitespace characters
@@ -342,8 +346,13 @@ class PDFParser:
                                \ {1,30}(?P<component>[A-z]{1,29}) # Look for 1-30 spaces, then find a component that is 1-29 [A-z] (case-insensitive letter)
                                \ {1,30}(?P<units>([0-9]{1,2}|[0-9]{1,2} \- [0-9]{1,2})) # Look for 1-30 spaces, then find a unit that is either two digits or two digits followed by ` - ` followed by two digits
                                \ {2,15}(?P<topics>(|(\S(.\S|\S){0,29}))) # Look for 2-15 spaces, then maybe find a topic that is one non-whitespace followed by 1-29 non-whitespace|any+non-whitespace
-                               \ {1,30}[A-Z] # Look for 1-30 spaces, then find an extra character at the end(I have no clue what the purpose of it is I will be entirely honest)
+                               \ {1,30}[\S]+ # Look for 1-30 spaces, then find an extra character(s) at the end(I have no clue what the purpose of it is I will be entirely honest)
                                $""", line, re.VERBOSE)
+            # Notes on the extra characters:
+            # So far I've found:
+            # A(standard, on almost everything)
+            # X(only on LAW classes)
+            # SSB2(Summer Session 2)
             course_id = match.group("subject") + " " + match.group("course_num")
             if self.db_session.scalar(select(Course.code).filter_by(code=course_id)) is None and course_id not in self.missing_courses:
                 self.missing_courses.append(course_id)
@@ -366,6 +375,7 @@ class PDFParser:
         if self.state == "instruction_type":
             if len(line[:89].strip()) > 0:
                 logger.error(f"Looking for instruction_type but got `{line}`")
+                self.errors += 1
                 self.reset_state()
                 return
             self.class_obj.instruction_type = line.strip()
@@ -380,10 +390,10 @@ class PDFParser:
         if self.state == "schedule" or self.state == "schedule|enrollment":
             if line.strip().startswith("Bldg:"):
                 match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
-                                   \ +Bldg:\ (?P<building>[A-z]([A-z]|\ [A-z])*) # Look for one or more space, then `Bldg: `, then get the building string(allowing A-z and single spaces within)
-                                   \ +Room:\ (?P<room>(\S.*\S)|\S) # Look for one or more space, then `Room: `, then get room string(allowing non-zero spaces and single spaces within)
-                                   \ +Days:\ (?P<days>[A-z]+) # Look for one or more space, then `Days: `, then get days string(allowing A-z)
-                                   \ +Time:\ ((?P<time>TBA)|(?P<start_time_hour>[0-9]{2}):(?P<start_time_min>[0-9]{2})\ -\ (?P<end_time_hour>[0-9]{2}):(?P<end_time_min>[0-9]{2}))
+                                   \ *Bldg:\ (?P<building>[\S]([\S]|\ [\S])*) # Look for zero or more space, then `Bldg: `, then get the building string(allowing non-whitespace and single spaces within)
+                                   \ *Room:\ (?P<room>(\S.*\S)|\S) # Look for zero or more space, then `Room: `, then get room string(allowing non-zero spaces and single spaces within)
+                                   \ *Days:\ (?P<days>[A-z]+) # Look for zero or more space, then `Days: `, then get days string(allowing A-z)
+                                   \ *Time:\ ((?P<time>TBA)|(?P<start_time_hour>[0-9]{2}):(?P<start_time_min>[0-9]{2})\ -\ (?P<end_time_hour>[0-9]{2}):(?P<end_time_min>[0-9]{2}))
                                  $""", line, re.VERBOSE)
                                     # Either find TBA and put that in `time` or find the hour&min of start&end time
                 start_time = None
@@ -419,8 +429,9 @@ class PDFParser:
             self.schedule.instructors.append(get_or_create_instructor(match.group("name"), match.group("type"), self.db_session))
             return
         if self.state == "enrollment":
-            if not line.strip().startswith("Class") or len(line) < 147:
+            if not line.strip().startswith("Class"):
                 logger.error(f"Looking for enrollment but got `{line}`")
+                self.errors += 1
                 self.reset_state()
                 return
             # TODO: Enrollment stamp
@@ -446,6 +457,7 @@ class PDFParser:
                 self.state = "properties"
             elif len(line.strip()) > 0:
                 logger.error(f"Waiting for GR but got `{line}`")
+                self.errors += 1
                 self.reset_state()
             return
         if self.state == "properties":
@@ -536,4 +548,9 @@ if __name__ == "__main__":
     from database import init_db
     init_db()
 
+    # TODO: Add the rest of the processing
+    # TODO: Connect to a temporary database at first, then move everything over to the live database once all processing is done and successful
+    # TODO: Log to file
+    # TODO: Print out the total number of generated course entries in pdf and search processing
+    # FIXME: nothing seems to be getting written
     process_pdfs()
