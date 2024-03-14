@@ -333,7 +333,7 @@ class PDFParser:
             # It's 5am and I just found out I'm going to have to almost entirely re-write this entire thing god damn this sucks.
             # Anyways. At least this will give me a chance to go back and comment throughout things and explain how things work
             # because God knows I will not remember how the regex works in the future.
-            match = re.compile(r"""^
+            match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
                                \ {1,4}(?P<subject>[A-Z]{3,4}) # Look for 1-4 spaces, then find a subject that is 3-4 of [A-z] (case-insensitive letter)
                                \ {6,7}(?P<course_num>\S{2,3}) # Look for 6-7 spaces, then find a course_num that is 2-3 non-whitespace characters
                                \ {5,10}(?P<section>\S{1,9}) # Look for 5-10 spaces, then find a section that is 1-9 non-whitespace characters
@@ -342,8 +342,8 @@ class PDFParser:
                                \ {1,30}(?P<component>[A-z]{1,29}) # Look for 1-30 spaces, then find a component that is 1-29 [A-z] (case-insensitive letter)
                                \ {1,30}(?P<units>([0-9]{1,2}|[0-9]{1,2} \- [0-9]{1,2})) # Look for 1-30 spaces, then find a unit that is either two digits or two digits followed by ` - ` followed by two digits
                                \ {2,15}(?P<topics>(|(\S(.\S|\S){0,29}))) # Look for 2-15 spaces, then maybe find a topic that is one non-whitespace followed by 1-29 non-whitespace|any+non-whitespace
-                               \ {1,30}[A-Z]$ # Look for 1-30 spaces, then find an extra character at the end(I have no clue what the purpose of it is I will be entirely honest)
-                               """).match(line)
+                               \ {1,30}[A-Z] # Look for 1-30 spaces, then find an extra character at the end(I have no clue what the purpose of it is I will be entirely honest)
+                               $""", line, re.VERBOSE)
             course_id = match.group("subject") + " " + match.group("course_num")
             if self.db_session.scalar(select(Course.code).filter_by(code=course_id)) is None and course_id not in self.missing_courses:
                 self.missing_courses.append(course_id)
@@ -379,17 +379,25 @@ class PDFParser:
                     self.class_notes.append(line.strip())
         if self.state == "schedule" or self.state == "schedule|enrollment":
             if line.strip().startswith("Bldg:"):
-                match = re.compile(r"""/^
-                                   \ +Bldg: (?P<building>[A-z]([A-z]| [A-z])*) # Look for one or more space, then `Bldg: `, then get the building string(allowing A-z and single spaces within)
-                                   \ +Room: (?P<room>(\S.*\S)|\S) # Look for one or more space, then `Room: `, then get room string(allowing non-zero spaces and single spaces within)
-                                   \ +Days: (?P<days>[A-z]+) # Look for one or more space, then `Days: `, then get days string(allowing A-z)
-                                   \ +Time: ((?P<time>TBA)|(?P<start_time_hour>[0-9]{2}):(?P<start_time_min>[0-9]{2}) - (?P<end_time_hour>[0-9]{2}):(?P<end_time_min>[0-9]{2}))$/""")
+                match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
+                                   \ +Bldg:\ (?P<building>[A-z]([A-z]|\ [A-z])*) # Look for one or more space, then `Bldg: `, then get the building string(allowing A-z and single spaces within)
+                                   \ +Room:\ (?P<room>(\S.*\S)|\S) # Look for one or more space, then `Room: `, then get room string(allowing non-zero spaces and single spaces within)
+                                   \ +Days:\ (?P<days>[A-z]+) # Look for one or more space, then `Days: `, then get days string(allowing A-z)
+                                   \ +Time:\ ((?P<time>TBA)|(?P<start_time_hour>[0-9]{2}):(?P<start_time_min>[0-9]{2})\ -\ (?P<end_time_hour>[0-9]{2}):(?P<end_time_min>[0-9]{2}))
+                                 $""", line, re.VERBOSE)
                                     # Either find TBA and put that in `time` or find the hour&min of start&end time
+                start_time = None
+                end_time = None
+                try:
+                    start_time=(int(match.group("start_time_hour"))*60+int(match.group("start_time_min")))
+                    end_time=(int(match.group("end_time_hour"))*60+int(match.group("end_time_min")))
+                except IndexError:
+                    pass
                 self.schedule = ClassSchedule(building=match.group("building").strip(), 
                                               room=match.group("room").strip(),
                                               days=match.group("days").strip(),
-                                              start_time=None if line[85:85+3] == "TBA" else (int(line[85:85+2])*60+int(line[88:88+2])),
-                                              end_time=None if line[85:85+3] == "TBA" else (int(line[93:93+2])*60+int(line[96:96+2])),
+                                              start_time=start_time,
+                                              end_time=end_time,
                                               class_number=self.class_obj.class_number,
                                               term=self.term)
                 self.state = "instructor"
@@ -403,7 +411,12 @@ class PDFParser:
                 self.schedule = None
                 self.state = "schedule|enrollment"
                 return
-            self.schedule.instructors.append(get_or_create_instructor(line[153:].strip(), line[119:134].strip(), self.db_session))
+            match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
+                             \ +(?P<type>[A-Z]+) # Look for one or more space and then get type as capitalized letter string
+                             \ +[0-9]+ # Look for one or more space and then a number(we ignore this for now bc i have no clue what the purpose of it is)
+                             \ +Instructor:(?P<name>.+) # Look for one or more space and then `Instructor:` and then take the rest as the instructor name
+                             $""", line, re.VERBOSE)
+            self.schedule.instructors.append(get_or_create_instructor(match.group("name"), match.group("type"), self.db_session))
             return
         if self.state == "enrollment":
             if not line.strip().startswith("Class") or len(line) < 147:
@@ -412,17 +425,20 @@ class PDFParser:
                 return
             # TODO: Enrollment stamp
             # The indices change depending on how long the numbers are, as there are 15 character of spacing between entries
-            # Enrollment_cap always starts at 21
-            start = 21
-            self.class_obj.enrollment_cap = int(line[start:start+line[start:].index(" ")])
-            start += len(str(self.class_obj.enrollment_cap)) + 15 + len("Class Enrl Tot:")
-            self.class_obj.enrollment_total = int(line[start:start+line[start:].index(" ")])
-            start += len(str(self.class_obj.enrollment_total)) + 15 + len("Class Wait Cap:")
-            self.class_obj.waitlist_cap = int(line[start:start+line[start:].index(" ")])
-            start += len(str(self.class_obj.waitlist_cap)) + 15 + len("Class Wait Tot:")
-            self.class_obj.waitlist_total = int(line[start:start+line[start:].index(" ")])
-            start += len(str(self.class_obj.waitlist_total)) + 15 + len("Class Min Enrl:")
-            self.class_obj.min_enrollment = int(line[start:])
+            # Enrollment_cap always starts at 21 
+            match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
+                             \ +Class\ Enrl\ Cap:(?P<class_enrollment_cap>[0-9]+) # Look for one or more space then `Class Enrl Cap:` then find class_enrollment_cap which is one or more digits
+                             \ +Class\ Enrl\ Tot:(?P<class_enrollment_tot>[0-9]+) # Look for one or more space then `Class Enrl Tot:` then find class_enrollment_tot which is one or more digits
+                             \ +Class\ Wait\ Cap:(?P<class_waitlist_cap>[0-9]+) # Look for one or more space then `Class Wait Cap:` then find class_waitlist_cap which is one or more digits
+                             \ +Class\ Wait\ Tot:(?P<class_waitlist_tot>[0-9]+) # Look for one or more space then `Class Wait Tot:` then find class_waitlist_tot which is one or more digits
+                             \ +Class\ Min\ Enrl:(?P<class_min_enrollment>[0-9]+) # Look for one or more space then `Class Min Enrl:` then find class_min_enrollment which is one or more digits
+                             $""", line, re.VERBOSE) # re.VERBOSE is to allow whitespace in the regex that is exclusively for readability, as well as comments!
+            
+            self.class_obj.enrollment_cap = int(match.group("class_enrollment_cap"))
+            self.class_obj.enrollment_total = int(match.group("class_enrollment_tot"))
+            self.class_obj.waitlist_cap = int(match.group("class_waitlist_cap"))
+            self.class_obj.waitlist_total = int(match.group("class_waitlist_tot"))
+            self.class_obj.min_enrollment = int(match.group("class_min_enrollment"))
             self.state = "waiting_for_gr"
             return
         if self.state == "waiting_for_gr":
@@ -434,9 +450,9 @@ class PDFParser:
             return
         if self.state == "properties":
             if line.strip().startswith("Combined Section ID:"):
-                self.class_obj.combined_section_id = line[26:].strip()
+                self.class_obj.combined_section_id = line[line.index(":")+1:].strip()
             if line.strip().startswith("Class Equivalents:"):
-                self.class_obj.equivalents = line[24:].strip()
+                self.class_obj.equivalents = line[line.index(":")+1:].strip()
             # Here is where we could theoretically populate the attributes(GenEds) into new course listings, but it instead should be moved into a gened credit system rather than the properties system I currently have in place.
             # TODO: Populate GenEd credits into their own table, allowing for easy and more efficient searching
             if line.strip().startswith("Reserve Capacity:"):
@@ -448,14 +464,23 @@ class PDFParser:
             if line[:35].strip() not in ["", "Reserve Capacity:"]:
                 self.state = "properties"
                 return
+
+            match = re.match(r"""^
+                             (\ +Reserve\ Capacity:|) # Optionally include label since it only occurs on the first line
+                             \ +(?P<expiration_date>[0-3][0-9]-[A-Z]{3}-[0-9]{4}) # Look for one or more space and then find expiration_date of DD-MON-YYYY
+                             \ +(?P<description>\S(\S|\ \S)+) # Look for one or more space and then find description string with only one space in a row allowed
+                             \ +(?P<cap>[0-9]{1,3}) # Look for one or more more space and then find cap of 1-3 digit number
+                             \ +(?P<tot>[0-9]{1,3}) # Look for one or more more space and then find tot of 1-3 digit number
+                             ((Reserve\ Enrl\ Cap:Reserve\ Enrl\ Tot:)|) # Optionally include the labels since those only occur on the first line
+                             $""", line, re.VERBOSE)
             
             reserve_cap = ClassReserveCapacity(
                 class_number=self.class_obj.class_number,
                 term=self.term,
-                expire_date=datetime.datetime.strptime(line[34:45], "%d-%b-%Y"),
-                description=line[47:95].strip(),
-                enroll_cap=int(line[95:98]),
-                enroll_total=int(line[99:131]))
+                expire_date=datetime.datetime.strptime(match.group("expiration_date"), "%d-%b-%Y"),
+                description=match.group("description"),
+                enroll_cap=int(match.group("cap")),
+                enroll_total=int(match.group("tot")))
             self.extras.append(reserve_cap)
             if self.class_obj.reserve_capacities is None:
                 self.class_obj.reserve_capacities = []
