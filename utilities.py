@@ -1,5 +1,6 @@
-from database import db_session
 from models import ClassSchedule, Instructor
+from sqlalchemy.orm import scoped_session
+from database import session_factory
 
 
 def safe_cast(val, to_type, default=None):
@@ -35,17 +36,26 @@ def humanize_hour(hour):
     return f"{(hour - 1) % 12 + 1}{'pm' if hour >= 12 else 'am'}"
 
 
-def get_or_create_instructor(name):
-    instructor = db_session.query(Instructor).filter_by(name=name).first()
+def get_or_create_instructor(name, type=None, db_session=None):
+    if db_session is None:
+        db_session = scoped_session(session_factory)
+        
+    instructor = db_session.query(Instructor).filter_by(
+        # I believe this should split the dictionary out into kwargs
+        # This is done so as to only include the instructor_type filter if it was included in the function call
+        # It could certainly be done in a better way, however I don't feel like doing it in said better way
+        **({"name":name, "instructor_type":type} if type is not None else {"name":name})
+        ).first()
     if instructor is None:
         instructor = Instructor(
             name=name,
-            instructor_type="??"
+            instructor_type="??" if type is None else type
         )
     return instructor
 
 
 def standardize_term(term):
+    return ""
     data = {
         "Fall 2022": "FALL2022",
         "2022 Fall": "FALL2022",

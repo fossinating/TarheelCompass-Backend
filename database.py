@@ -1,10 +1,11 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
+import os
+import dotenv
 
-import config
-
+dotenv.load_dotenv()
 engine = create_engine(
-    f"{config.DB_TYPE}://{config.DB_USERNAME}:{config.DB_PASSWORD}@{config.DB_PATH}/{config.DB_DATABASE_NAME}")
+    f"{os.getenv("DB_TYPE")}://{os.getenv("DB_USERNAME")}:{os.getenv("DB_PASSWORD")}@{os.getenv("DB_PATH")}/{os.getenv("DB_DATABASE_NAME")}")
 session_factory = sessionmaker(autocommit=False,
                                autoflush=True,
                                bind=engine)

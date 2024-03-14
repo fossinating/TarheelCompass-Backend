@@ -1,7 +1,7 @@
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy import Table, Float, DateTime, Column, Integer, \
-    String, ForeignKey, Text, ForeignKeyConstraint, UniqueConstraint
+    String, ForeignKey, Text, ForeignKeyConstraint, UniqueConstraint, Boolean
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 
 from database import Base
@@ -24,14 +24,22 @@ class Instructor(Base):
 class Class(Base):
     __tablename__ = "class"
     course_id: Mapped[str] = mapped_column(String(10), ForeignKey("course.code"))
+    # AAAD 51
     course: Mapped["Course"] = relationship("Course")
     class_section: Mapped[str] = mapped_column(String(4))
+    # 001
     class_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 13904 (Registration number)
     title: Mapped[str] = mapped_column(Text)
+    # FYS MASQS OF BLACKNESS
     component: Mapped[str] = mapped_column(Text)
+    # Lecture
     topics: Mapped[str] = mapped_column(Text)
-    term: Mapped[str] = mapped_column(String(8), primary_key=True)
-    hours: Mapped[float] = mapped_column(Float)
+    # A (I really don't know what this is for tbh)
+    term: Mapped[str] = mapped_column(String(20), primary_key=True)
+    # SPRING 2024
+    units: Mapped[str] = mapped_column(String(40))
+    # 3
     meeting_dates: Mapped[str] = mapped_column(String(30))
     instruction_type: Mapped[str] = mapped_column(String)
     schedules: Mapped[List["ClassSchedule"]] = relationship("ClassSchedule")
@@ -40,9 +48,9 @@ class Class(Base):
     waitlist_cap: Mapped[int] = mapped_column(Integer)
     waitlist_total: Mapped[int] = mapped_column(Integer)
     min_enrollment: Mapped[int] = mapped_column(Integer)
-    attributes: Mapped[str] = mapped_column(Text)
     combined_section_id: Mapped[str] = mapped_column(Text)
     equivalents: Mapped[str] = mapped_column(Text)
+    reserve_capacities: Mapped[List["ClassReserveCapacity"]] = relationship("ClassReserveCapacity")
     last_updated_at: Mapped[DateTime] = mapped_column(DateTime)
     last_updated_from: Mapped[str] = mapped_column(String(7))
 
@@ -67,7 +75,6 @@ class Class(Base):
             "waitlist_cap": self.waitlist_cap,
             "waitlist_total": self.waitlist_total,
             "min_enrollment": self.min_enrollment,
-            "attributes": attributes,
             "last_updated_at": self.last_updated_at,
             "last_updated_from": self.last_updated_from
         }
@@ -109,15 +116,15 @@ class Class(Base):
 class ClassSchedule(Base):
     __tablename__ = "class_schedule"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    location: Mapped[str] = mapped_column(Text)
+    building: Mapped[str] = mapped_column(String(32))
+    room: Mapped[str] = mapped_column(String(16))
     instructors: Mapped[List["Instructor"]] = relationship("Instructor", secondary=schedule_instructor_join_table)
     days: Mapped[str] = mapped_column(String(10))
     # start time and end time are in minutes since midnight
     start_time: Mapped[int] = mapped_column(Integer)
     end_time: Mapped[int] = mapped_column(Integer)
-    time: Mapped[str] = mapped_column(String(15))
     class_number: Mapped[int] = mapped_column(Integer)
-    term: Mapped[str] = mapped_column(String(8))
+    term: Mapped[str] = mapped_column(String(20))
     __table_args__ = (ForeignKeyConstraint((class_number, term), (Class.class_number, Class.term)), {})
     class_reference: Mapped["Class"] = relationship("Class",
                                                     back_populates="schedules")
@@ -152,6 +159,48 @@ class Course(Base):
     last_updated_at: Mapped[DateTime] = mapped_column(DateTime)
     last_updated_from: Mapped[str] = mapped_column(String(7))
 
+
+class TermDataSource(Base):
+    __tablename__ = "term_source"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(10))
+    raw_term_name: Mapped[str] = mapped_column(String(20))
+    term_name: Mapped[str] = mapped_column(String(20))
+    last_updated: Mapped[Optional[DateTime]] = mapped_column(DateTime)
+    last_seen: Mapped[DateTime] = mapped_column(DateTime)
+
+
+class TermData(Base):
+    __tablename__ = "term"
+    name: Mapped[str] = mapped_column(String(20), unique=True)
+    confirmed: Mapped[Boolean] = mapped_column(Boolean, default=False)
+    id: Mapped[int] = mapped_column(Integer, autoincrement=True, primary_key=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+
+class ClassEnrollmentStamp(Base):
+    __tablename__ = "class_enrollment_stamp"
+    class_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    term: Mapped[str] = mapped_column(String(32), primary_key=True)
+    enrollment_cap: Mapped[Optional[int]] = mapped_column(Integer)
+    enrollment_total: Mapped[Optional[int]] = mapped_column(Integer)
+    waitlist_cap: Mapped[Optional[int]] = mapped_column(Integer)
+    waitlist_total: Mapped[Optional[int]] = mapped_column(Integer)
+    min_enrollment: Mapped[Optional[int]] = mapped_column(Integer)
+    timestamp: Mapped[DateTime] = mapped_column(DateTime, primary_key=True)
+    source: Mapped[str] = mapped_column(String(7), primary_key=True)
+
+class ClassReserveCapacity(Base):
+    __tablename__ = "class_reserve_capacity"
+    class_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    term: Mapped[str] = mapped_column(String(32), primary_key=True)
+    expire_date: Mapped[DateTime] = mapped_column(DateTime)
+    description: Mapped[str] = mapped_column(String(60))
+    enroll_cap: Mapped[int] = mapped_column(Integer)
+    enroll_total: Mapped[int] = mapped_column(Integer)
+    __table_args__ = (ForeignKeyConstraint((class_number, term), (Class.class_number, Class.term)), {})
+    class_reference: Mapped["Class"] = relationship("Class",
+                                                    back_populates="reserve_capacities")
 
 '''
 

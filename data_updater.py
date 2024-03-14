@@ -1,19 +1,27 @@
 import datetime
 import filecmp
+import math
 import os
+import re
 import urllib.request
+import dotenv
+from discord_logger import DiscordLogger
 from os.path import exists
 
 import requests as requests
 from bs4 import BeautifulSoup, NavigableString
 from sqlalchemy.orm import scoped_session
+from sqlalchemy import delete, select
 from tqdm import tqdm
 
 from database import session_factory
-from models import Course, Class, CourseAttribute
+from models import ClassReserveCapacity, Course, Class, CourseAttribute, TermDataSource, TermData, ClassSchedule
 from utilities import search_to_schedule, get_or_create_instructor, safe_cast, standardize_term
 
-db_session = scoped_session(session_factory)
+from pypdf import PdfReader
+
+dotenv.load_dotenv()
+logger = DiscordLogger(os.getenv("DISCORD_WEBHOOK_URL"), "Tarheel Compass Data")
 
 
 def get_root_text(html_element):
@@ -49,6 +57,7 @@ subjects = (
 
 # gets data about courses from the catalog
 def process_course_catalog():
+    db_session = scoped_session(session_factory)
     add_queue = []
     timestamp = datetime.datetime.utcnow()
     for subject in tqdm(subjects, position=0, leave=False, desc="Subjects"):
@@ -71,8 +80,8 @@ def process_course_catalog():
                         label=strong_text.strip().strip(".:"),
                         value=other_text.strip().strip(".")))
 
-            course_obj = db_session.query(Course).filter_by(
-                code=course.select_one(".detail-code strong").text.strip(".")).first()
+            course_obj = db_session.scalar(select(Course).filter_by(
+                code=course.select_one(".detail-code strong").text.strip(".")))
             add_queue.extend(attributes)
 
             if course_obj is None:
@@ -106,6 +115,7 @@ def process_course_search_for_terms(terms):
 # gets information about classes from the class search
 # (will not get information about any class without credit hours)
 def process_course_search_for_term(term):
+    db_session = scoped_session(session_factory)
     response = requests.get("https://reports.unc.edu/class-search/advanced_search/", params={
         "term": term,
         "advanced": ", ".join(subjects)
@@ -205,34 +215,300 @@ def process_course_search_for_term(term):
     print(f"Created entries for {len(missing_classes)} missing classes: " + ",".join(missing_classes))
 
 
+pdf_split_line = "____________________________________________________________________________________________________________________________________________________________"
+
+
+class PDFParser:
+    """
+    Valid states:
+
+    `waiting` - waiting for the starting line
+    `first_line` - parsing first line for basic information
+    
+    
+    """
+
+
+    def __init__(self, term: str, source: str):
+        self.term = term
+        self.source = source
+        self.reset_state()
+        self.db_session = scoped_session(session_factory)
+        self.missing_courses = []
+    
+    def reset_state(self):
+        self.state = "waiting"
+        self.class_obj = Class(term=self.term)
+        self.extras = []
+        self.schedule = None
+        self.class_notes = []
+        self.course = None
+
+    
+    def parse(self, force=False):
+        filename = "ssb-collection/" + self.term + ".pdf"
+        temp_filename = "temp/" + self.term + ".pdf"
+
+        # Create temporary directory if it doesn't already exist
+        if not exists("temp/"):
+            os.mkdir("temp")
+        # Delete pre-existing temp file if it already exists so there is room to download
+        if exists(temp_filename):
+            os.remove(temp_filename)
+
+        # Download the file
+        logger.info(f"Downloading {filename} from {self.source}")
+        urllib.request.urlretrieve(self.source, temp_filename)
+
+        # source_reader is exclusively for reading the run time and determine if we should continue
+        source_reader = PdfReader(temp_filename)
+        page_one = source_reader.pages[0].extract_text(extraction_mode="layout")
+
+        logger.debug(
+            page_one[page_one.index("Run Date: ")+11:page_one.index("Run Date: ")+21] + 
+            " " + 
+            page_one[page_one.index("Run Time: ")+11:page_one.index("Run Time: ")+19])
+
+        self.source_datetime = datetime.datetime.strptime(
+            page_one[page_one.index("Run Date: ")+11:page_one.index("Run Date: ")+21] + 
+            " " + 
+            page_one[page_one.index("Run Time: ")+11:page_one.index("Run Time: ")+19],
+            "%m/%d/%Y %H:%M:%S")
+        
+        # Check if there is already a TermDataSource record indicating that a ssb of source time or later has already been parsed
+        term_data_source = self.db_session.scalar(select(TermDataSource).filter_by(term_name=self.term, source="pdf"))
+        if term_data_source is None:
+            logger.error(f"Could not find pdf term for `{self.term}`, but this should have been created before parsing.")
+            os.remove(temp_filename)
+            return
+        else:
+            # Only parse if source_time is newer than last_updated, or if being forced(which should only happen in dev)
+            if term_data_source.last_updated is None or self.source_datetime > term_data_source.last_updated or force:
+                logger.info("Source run time later than saved updated time, parsing.")
+
+                # Create ssb-collection directory if it doesn't already exist
+                if not exists("ssb-collection/"):
+                    os.mkdir("ssb-collection")
+
+                # Delete existing ssb if it exists so there's room to move
+                if exists(filename):
+                    os.remove(filename)
+
+                # Move the file by renaming
+                os.rename(temp_filename, filename)
+                
+                # Start new reader instance for the new location
+                reader = PdfReader(filename)
+
+                for page in tqdm(reader.pages, position=1, leave=False, desc="Pages"):
+                    for line in tqdm(page.extract_text(extraction_mode="layout").split("\n"), position=2, leave=False, desc="Lines"):
+                        try:
+                            self.parse_line(line)
+                        except (Exception) as e:
+                            logger.error(f"Failed to parse line with reason {e}\nLine:`{line}`")
+                            self.reset_state()
+                            raise e
+
+                # Update the last_updated value
+                # This is done at the very end intentionally so that it won't get updated if we run into any issues
+                term_data_source.last_updated = self.source_datetime
+        
+    def parse_line(self, line: str):
+        if self.state == "waiting":
+            if line.startswith(pdf_split_line):
+                self.state = "first_line"
+                return
+        if self.state == "first_line":
+            # Since sometimes between pages there will be another header bit, detect this and don't throw an error,
+            # just reset to the waiting state
+            if line.strip().startswith("Report ID"):
+                self.reset_state()
+                return
+            if line[:2] != "  ":
+                logger.error(f"Looking for first_line but got `{line}`")
+                self.reset_state()
+                return
+            # FIXME: Different semesters have different spacing and indices for everything, switch to .index to find stuff(or maybe regex?)
+            # Yeah let's just use regex. God I hate this
+            # It's 5am and I just found out I'm going to have to almost entirely re-write this entire thing god damn this sucks.
+            # Anyways. At least this will give me a chance to go back and comment throughout things and explain how things work
+            # because God knows I will not remember how the regex works in the future.
+            match = re.compile(r"""^
+                               \ {1,4}(?P<subject>[A-Z]{3,4}) # Look for 1-4 spaces, then find a subject that is 3-4 of [A-z] (case-insensitive letter)
+                               \ {6,7}(?P<course_num>\S{2,3}) # Look for 6-7 spaces, then find a course_num that is 2-3 non-whitespace characters
+                               \ {5,10}(?P<section>\S{1,9}) # Look for 5-10 spaces, then find a section that is 1-9 non-whitespace characters
+                               \ {5,10}(?P<class_num>[0-9]{1,12}) # Look for 5-10 spaces, then find a class_num that is 1-12 [0-9] (any digit)
+                               \ {5,13}(?P<title>\S(\S|.\S){1,29}) # Look for 5-13 spaces, then find a title that is one non-whitespace followed by 1-29 non-whitespace|any+non-whitespace (just making sure that there is only up to one space in a row)
+                               \ {1,30}(?P<component>[A-z]{1,29}) # Look for 1-30 spaces, then find a component that is 1-29 [A-z] (case-insensitive letter)
+                               \ {1,30}(?P<units>([0-9]{1,2}|[0-9]{1,2} \- [0-9]{1,2})) # Look for 1-30 spaces, then find a unit that is either two digits or two digits followed by ` - ` followed by two digits
+                               \ {2,15}(?P<topics>(|(\S(.\S|\S){0,29}))) # Look for 2-15 spaces, then maybe find a topic that is one non-whitespace followed by 1-29 non-whitespace|any+non-whitespace
+                               \ {1,30}[A-Z]$ # Look for 1-30 spaces, then find an extra character at the end(I have no clue what the purpose of it is I will be entirely honest)
+                               """).match(line)
+            course_id = match.group("subject") + " " + match.group("course_num")
+            if self.db_session.scalar(select(Course.code).filter_by(code=course_id)) is None and course_id not in self.missing_courses:
+                self.missing_courses.append(course_id)
+                self.course = Course(
+                    code=course_id,
+                    title=match.group("title"),
+                    credits=match.group("units"),
+                    last_updated_at=self.source_datetime,
+                    last_updated_from="pdf"
+                )
+            self.class_obj.course_id = course_id
+            self.class_obj.class_section = match.group("section")
+            self.class_obj.class_number = int(match.group("class_num"))
+            self.class_obj.title = match.group("title")
+            self.class_obj.component = match.group("component")
+            self.class_obj.units = match.group("units")
+            self.class_obj.topics = match.group("topics")
+            self.state = "instruction_type"
+            return
+        if self.state == "instruction_type":
+            if len(line[:89].strip()) > 0:
+                logger.error(f"Looking for instruction_type but got `{line}`")
+                self.reset_state()
+                return
+            self.class_obj.instruction_type = line.strip()
+            self.state = "notes|schedule"
+            return
+        if self.state == "notes|schedule":
+            if line.strip().startswith("Bldg:"):
+                self.state = "schedule"
+            else:
+                if len(line.strip()) > 0:
+                    self.class_notes.append(line.strip())
+        if self.state == "schedule" or self.state == "schedule|enrollment":
+            if line.strip().startswith("Bldg:"):
+                match = re.compile(r"""/^
+                                   \ +Bldg: (?P<building>[A-z]([A-z]| [A-z])*) # Look for one or more space, then `Bldg: `, then get the building string(allowing A-z and single spaces within)
+                                   \ +Room: (?P<room>(\S.*\S)|\S) # Look for one or more space, then `Room: `, then get room string(allowing non-zero spaces and single spaces within)
+                                   \ +Days: (?P<days>[A-z]+) # Look for one or more space, then `Days: `, then get days string(allowing A-z)
+                                   \ +Time: ((?P<time>TBA)|(?P<start_time_hour>[0-9]{2}):(?P<start_time_min>[0-9]{2}) - (?P<end_time_hour>[0-9]{2}):(?P<end_time_min>[0-9]{2}))$/""")
+                                    # Either find TBA and put that in `time` or find the hour&min of start&end time
+                self.schedule = ClassSchedule(building=match.group("building").strip(), 
+                                              room=match.group("room").strip(),
+                                              days=match.group("days").strip(),
+                                              start_time=None if line[85:85+3] == "TBA" else (int(line[85:85+2])*60+int(line[88:88+2])),
+                                              end_time=None if line[85:85+3] == "TBA" else (int(line[93:93+2])*60+int(line[96:96+2])),
+                                              class_number=self.class_obj.class_number,
+                                              term=self.term)
+                self.state = "instructor"
+                return
+            if self.state == "schedule|enrollment" and line.strip().startswith("Class"):
+                self.state = "enrollment"
+        if self.state == "instructor":
+            if len(line.strip()) == 0:
+                self.class_obj.schedules.append(self.schedule)
+                self.extras.append(self.schedule)
+                self.schedule = None
+                self.state = "schedule|enrollment"
+                return
+            self.schedule.instructors.append(get_or_create_instructor(line[153:].strip(), line[119:134].strip(), self.db_session))
+            return
+        if self.state == "enrollment":
+            if not line.strip().startswith("Class") or len(line) < 147:
+                logger.error(f"Looking for enrollment but got `{line}`")
+                self.reset_state()
+                return
+            # TODO: Enrollment stamp
+            # The indices change depending on how long the numbers are, as there are 15 character of spacing between entries
+            # Enrollment_cap always starts at 21
+            start = 21
+            self.class_obj.enrollment_cap = int(line[start:start+line[start:].index(" ")])
+            start += len(str(self.class_obj.enrollment_cap)) + 15 + len("Class Enrl Tot:")
+            self.class_obj.enrollment_total = int(line[start:start+line[start:].index(" ")])
+            start += len(str(self.class_obj.enrollment_total)) + 15 + len("Class Wait Cap:")
+            self.class_obj.waitlist_cap = int(line[start:start+line[start:].index(" ")])
+            start += len(str(self.class_obj.waitlist_cap)) + 15 + len("Class Wait Tot:")
+            self.class_obj.waitlist_total = int(line[start:start+line[start:].index(" ")])
+            start += len(str(self.class_obj.waitlist_total)) + 15 + len("Class Min Enrl:")
+            self.class_obj.min_enrollment = int(line[start:])
+            self.state = "waiting_for_gr"
+            return
+        if self.state == "waiting_for_gr":
+            if line.strip() in ["GR1", "GR3", "GRZ"]:
+                self.state = "properties"
+            elif len(line.strip()) > 0:
+                logger.error(f"Waiting for GR but got `{line}`")
+                self.reset_state()
+            return
+        if self.state == "properties":
+            if line.strip().startswith("Combined Section ID:"):
+                self.class_obj.combined_section_id = line[26:].strip()
+            if line.strip().startswith("Class Equivalents:"):
+                self.class_obj.equivalents = line[24:].strip()
+            # Here is where we could theoretically populate the attributes(GenEds) into new course listings, but it instead should be moved into a gened credit system rather than the properties system I currently have in place.
+            # TODO: Populate GenEd credits into their own table, allowing for easy and more efficient searching
+            if line.strip().startswith("Reserve Capacity:"):
+                self.state = "reserve_capacity"
+        if self.state == "reserve_capacity":
+            if len(line.strip()) == 0:
+                self.state = "notes"
+                return
+            if line[:35].strip() not in ["", "Reserve Capacity:"]:
+                self.state = "properties"
+                return
+            
+            reserve_cap = ClassReserveCapacity(
+                class_number=self.class_obj.class_number,
+                term=self.term,
+                expire_date=datetime.datetime.strptime(line[34:45], "%d-%b-%Y"),
+                description=line[47:95].strip(),
+                enroll_cap=int(line[95:98]),
+                enroll_total=int(line[99:131]))
+            self.extras.append(reserve_cap)
+            if self.class_obj.reserve_capacities is None:
+                self.class_obj.reserve_capacities = []
+            self.class_obj.reserve_capacities.append(reserve_cap)
+        if self.state == "notes":
+            if line.startswith(pdf_split_line):
+                self.state = "first_line"
+
+                self.db_session.add_all(self.extras)
+                if self.course is not None:
+                    self.db_session.add(self.course)
+                self.db_session.add(self.class_obj)
+                return
+            if len(line.strip()) > 0:
+                self.class_notes.append(line.strip)
+
+
 # Read through the directory of class listings
 def process_pdfs():
-    print("Getting most up to date pdf")
+    logger.debug("Getting directory of pdfs")
 
     response = requests.get("https://registrar.unc.edu/courses/schedule-of-classes/directory-of-classes-2/")
 
     soup = BeautifulSoup(response.content, "html.parser")
 
-    for link in soup.select(".main div > ul > li > a"):
-        source = link["href"]
-        term = source.split("/")[-1].split("-")[0]
-        filename = "ssb-collection/" + standardize_term(term) + ".pdf"
-        temp_filename = "temp/" + standardize_term(term) + ".pdf"
-        if not exists("temp/"):
-            os.mkdir("temp")
-        if not exists("ssb-collection/"):
-            os.mkdir("ssb-collection")
-        if exists(temp_filename):
-            os.remove(temp_filename)
-        print(f"Downloading {filename} from {source}")
-        urllib.request.urlretrieve(source, temp_filename)
+    for ssb_link in tqdm(soup.select(".main div > ul > li > a"), position=0, leave=False, desc="PDFs"):
+        source = ssb_link["href"]
+        term = ssb_link.text.upper().replace(" ", "_")
+        parser = PDFParser(term, source)
 
-        if True or not exists(filename) or not filecmp.cmp(filename, temp_filename):
-            print("File changed, analysing new PDF")
-            if exists(filename):
-                os.remove(filename)
-            os.rename(temp_filename, filename)
-            process_pdf(filename)
+        logger.info(f"Found ssb with term {term}")
+
+        db_session = scoped_session(session_factory)
+
+        term_data = db_session.scalar(select(TermData).filter_by(name=term))
+        if term_data is None:
+            logger.warning(f"Found a new term `{term}`, creating placeholder entry in term_data.")
+            db_session.add(TermData(name=term))
+
+        term_data_source = db_session.scalar(select(TermDataSource).filter_by(term_name=term, source="pdf"))
+        if term_data_source is None:
+            logger.warning(f"Found a new pdf term `{term}`, creating a new entry in term_data_source")
+            db_session.add(TermDataSource(source="pdf", term_name=term, raw_term_name=ssb_link.text, last_seen=datetime.datetime.now()))
         else:
-            print(f"File unchanged")
-            os.remove(temp_filename)
+            term_data_source.last_seen = datetime.datetime.now()
+
+        db_session.commit()
+        db_session.close()
+        parser.parse(force=True)
+
+
+if __name__ == "__main__":
+    from database import init_db
+    init_db()
+
+    process_pdfs()
