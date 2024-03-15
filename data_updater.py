@@ -253,13 +253,14 @@ class PDFParser:
         self.missing_courses = []
         self.errors = 0
         self.state_logger = logging.getLogger("state_logger")
-        self.state_logger.setLevel(logging.DEBUG)
+        self.state_logger.setLevel(logging.DEBUG) # Set it to DEBUG for it to actually output anything at all
         state_log_handler = TimedRotatingFileHandler((pathlib.Path(__file__).parent / "logs" / "state.log").resolve(), when="midnight", backupCount=14)
         state_log_handler.suffix = "%Y%m%d"
         state_log_handler.setLevel(logging.DEBUG)
         state_log_handler.setFormatter(formatter)
         self.state_logger.handlers.clear()
         self.state_logger.addHandler(state_log_handler)
+        self.state_logger.info("Starting parsing of new.")
     
     def reset_state(self):
         self.state = "waiting"
@@ -436,12 +437,15 @@ class PDFParser:
             if self.state == "schedule|enrollment" and line.strip().startswith("Class"):
                 self.state = "enrollment"
         if self.state == "instructor":
-            if len(line.strip()) == 0:
+            if len(line.strip()) == 0 or line.strip().startswith("Class Enrl"):
                 self.class_obj.schedules.append(self.schedule)
                 self.extras.append(self.schedule)
                 self.schedule = None
-                self.state = "schedule|enrollment"
-                return
+                if len(line.strip()) == 0:
+                    self.state = "schedule|enrollment"
+                    return
+                else:
+                    self.state = "enrollment"
             match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
                              \ +(?P<type>[A-Z]+) # Look for one or more space and then get type as capitalized letter string
                              \ +[0-9]+ # Look for one or more space and then a number(we ignore this for now bc i have no clue what the purpose of it is)
