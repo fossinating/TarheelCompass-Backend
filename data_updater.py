@@ -449,7 +449,7 @@ class PDFParser:
             else:
                 match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
                                 \ +(?P<type>[A-Z]+) # Look for one or more space and then get type as capitalized letter string
-                                \ +[0-9]+ # Look for one or more space and then a number(we ignore this for now bc i have no clue what the purpose of it is)
+                                \ +([0-9]|\.)+ # Look for one or more space and then a number(we ignore this for now bc i have no clue what the purpose of it is), or a period because apparently this can be a float
                                 \ +Instructor:(?P<name>.+) # Look for one or more space and then `Instructor:` and then take the rest as the instructor name
                                 $""", line, re.VERBOSE)
                 self.schedule.instructors.append(get_or_create_instructor(match.group("name"), match.group("type"), self.db_session))
