@@ -353,7 +353,7 @@ class PDFParser:
         if self.state == "first_line":
             # Since sometimes between pages there will be another header bit, detect this and don't throw an error,
             # just reset to the waiting state
-            if line.strip().startswith("Report ID"):
+            if line.strip().startswith("Report ID") or len(line.strip()) == 0:
                 self.reset_state()
                 return
             if line[:2] != "  ":
@@ -368,7 +368,7 @@ class PDFParser:
             # SSB2(Summer Session 2)
 
             # I'm not doing regex here because I can't figure out how to include optional spaces in the character counter.
-            course_id = line[2:6] + " " + line[6:15].strip()
+            course_id = line[2:12].strip() + " " + line[12:23].strip()
             if self.db_session.scalar(select(Course.code).filter_by(code=course_id)) is None and course_id not in self.missing_courses:
                 self.missing_courses.append(course_id)
                 self.course = Course(
@@ -381,8 +381,8 @@ class PDFParser:
             self.class_obj = Class(
                 term = self.term,
                 course_id = course_id,
-                class_section = line[15:26].strip(),
-                class_number = int(line[26:37]),
+                class_section = line[23:32].strip(),
+                class_number = int(line[32:44]),
                 title = line[44:73].strip(),
                 component = line[74:102].strip(),
                 units = line[102:114].strip(),
@@ -414,15 +414,16 @@ class PDFParser:
                                    \ *Room:\ (?P<room>(\S.*\S)|\S) # Look for zero or more space, then `Room: `, then get room string(allowing non-zero spaces and single spaces within)
                                    \ *Days:\ (?P<days>[A-z]+) # Look for zero or more space, then `Days: `, then get days string(allowing A-z)
                                    \ *Time:\ ((?P<time>TBA)|(?P<start_time_hour>[0-9]{2}):(?P<start_time_min>[0-9]{2})\ -\ (?P<end_time_hour>[0-9]{2}):(?P<end_time_min>[0-9]{2}))
-                                 $""", line, re.VERBOSE)
                                     # Either find TBA and put that in `time` or find the hour&min of start&end time
+                                 .*$""", line, re.VERBOSE) # Accept an unknown number of characters tagged on since some people(AAAD 89) like to put random shit there
                 start_time = None
                 end_time = None
                 try:
                     start_time=(int(match.group("start_time_hour"))*60+int(match.group("start_time_min")))
                     end_time=(int(match.group("end_time_hour"))*60+int(match.group("end_time_min")))
-                except IndexError:
-                    pass
+                except (TypeError, IndexError):
+                    start_time = None
+                    end_time = None
                 self.schedule = ClassSchedule(building=match.group("building").strip(), 
                                               room=match.group("room").strip(),
                                               days=match.group("days").strip(),
