@@ -477,16 +477,14 @@ class PDFParser:
             self.class_obj.waitlist_cap = int(match.group("class_waitlist_cap"))
             self.class_obj.waitlist_total = int(match.group("class_waitlist_tot"))
             self.class_obj.min_enrollment = int(match.group("class_min_enrollment"))
-            self.state = "waiting_for_gr"
+            self.state = "waiting_for_properties"
             return
-        if self.state == "waiting_for_gr":
-            if line.strip() in ["GR1", "GR3", "GRZ"]:
+        if self.state == "waiting_for_properties":
+            if line.strip() in ["GR1", "GR3", "GRZ", "CPF"]:
                 self.state = "properties"
+                return
             elif len(line.strip()) > 0:
-                logger.error(f"Waiting for GR but got `{line}`")
-                self.errors += 1
-                self.reset_state()
-            return
+                self.state = "properties"
         if self.state == "properties":
             if len(line.strip()) == 0:
                 self.state = "notes"
