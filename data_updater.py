@@ -387,7 +387,7 @@ class PDFParser:
                 class_section = line[23:32].strip(),
                 class_number = int(line[32:44]),
                 title = line[44:73].strip(),
-                component = line[74:102].strip(),
+                component = line[73:102].strip(),
                 units = line[102:114].strip(),
                 topics = line[114:143].strip(),
                 last_updated_at=self.source_datetime,
