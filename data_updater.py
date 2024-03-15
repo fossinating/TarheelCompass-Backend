@@ -415,7 +415,7 @@ class PDFParser:
                                    \ *Days:\ (?P<days>[A-z]+) # Look for zero or more space, then `Days: `, then get days string(allowing A-z)
                                    \ *Time:\ ((?P<time>TBA)|(?P<start_time_hour>[0-9]{2}):(?P<start_time_min>[0-9]{2})\ -\ (?P<end_time_hour>[0-9]{2}):(?P<end_time_min>[0-9]{2}))
                                     # Either find TBA and put that in `time` or find the hour&min of start&end time
-                                 .*$""", line, re.VERBOSE) # Accept an unknown number of characters tagged on since some people(AAAD 89) like to put random shit there
+                                 \ .*$""", line, re.VERBOSE) # Accept an unknown number of characters tagged on since some people(AAAD 89) like to put random shit there
                 start_time = None
                 end_time = None
                 try:
@@ -464,7 +464,8 @@ class PDFParser:
                              \ +Class\ Wait\ Cap:(?P<class_waitlist_cap>[0-9]+) # Look for one or more space then `Class Wait Cap:` then find class_waitlist_cap which is one or more digits
                              \ +Class\ Wait\ Tot:(?P<class_waitlist_tot>[0-9]+) # Look for one or more space then `Class Wait Tot:` then find class_waitlist_tot which is one or more digits
                              \ +Class\ Min\ Enrl:(?P<class_min_enrollment>[0-9]+) # Look for one or more space then `Class Min Enrl:` then find class_min_enrollment which is one or more digits
-                             $""", line, re.VERBOSE) # re.VERBOSE is to allow whitespace in the regex that is exclusively for readability, as well as comments!
+                             \ .*$""", line, re.VERBOSE) # Allow an unknown number of characters after a space since some people(AERO 202 Spring 2024) like to put random shit there
+            # re.VERBOSE is to allow whitespace in the regex that is exclusively for readability, as well as comments!
             
             self.class_obj.enrollment_cap = int(match.group("class_enrollment_cap"))
             self.class_obj.enrollment_total = int(match.group("class_enrollment_tot"))
