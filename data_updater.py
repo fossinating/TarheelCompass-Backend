@@ -413,7 +413,8 @@ class PDFParser:
         if self.state == "instructor":
             # If line starts with Class Enrl, add schedule, change state to enrollment, and process for same line
             if line.strip().startswith("Class Enrl"):
-                self.schedule.instructors.append(get_or_create_instructor(self.instructor_name, self.instructor_type, self.db_session))
+                if self.instructor_type is not None:
+                    self.schedule.instructors.append(get_or_create_instructor(self.instructor_name, self.instructor_type, self.db_session))
                 self.instructor_name = None
                 self.instructor_type = None
                 self.class_obj.schedules.append(self.schedule)
@@ -422,7 +423,8 @@ class PDFParser:
                 self.state = "enrollment"
             # If line starts with Bldg, add schedule, change state to schedule, and process for same line
             elif line.strip().startswith("Bldg"):
-                self.schedule.instructors.append(get_or_create_instructor(self.instructor_name, self.instructor_type, self.db_session))
+                if self.instructor_type is not None:
+                    self.schedule.instructors.append(get_or_create_instructor(self.instructor_name, self.instructor_type, self.db_session))
                 self.instructor_name = None
                 self.instructor_type = None
                 self.class_obj.schedules.append(self.schedule)

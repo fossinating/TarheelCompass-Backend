@@ -17,7 +17,7 @@ schedule_instructor_join_table = Table("schedule_instructor_join_table",
 class Instructor(Base):
     __tablename__ = "instructor"
     id: Mapped[int] = mapped_column(primary_key=True)
-    instructor_type: Mapped[str] = mapped_column(String(6))
+    instructor_type: Mapped[Optional[str]] = mapped_column(String(6))
     name: Mapped[Optional[str]] = mapped_column(Text)
 
 

@@ -52,7 +52,7 @@ def get_or_create_instructor(name, type=None, db_session=None):
     if instructor is None:
         instructor = Instructor(
             name=name,
-            instructor_type="??" if type is None else type
+            instructor_type=type
         )
     return instructor
 
