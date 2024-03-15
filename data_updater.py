@@ -447,12 +447,7 @@ class PDFParser:
                 else:
                     self.state = "enrollment"
             else:
-                match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
-                                \ +(?P<type>[A-Z]+) # Look for one or more space and then get type as capitalized letter string
-                                \ +([0-9]|\.)+ # Look for one or more space and then a number(we ignore this for now bc i have no clue what the purpose of it is), or a period because apparently this can be a float
-                                \ +Instructor:(?P<name>.+) # Look for one or more space and then `Instructor:` and then take the rest as the instructor name
-                                $""", line, re.VERBOSE)
-                self.schedule.instructors.append(get_or_create_instructor(match.group("name"), match.group("type"), self.db_session))
+                self.schedule.instructors.append(get_or_create_instructor(line[154:].strip(), line[120:135].strip(), self.db_session))
                 return
         if self.state == "enrollment":
             if not line.strip().startswith("Class"):
@@ -503,23 +498,14 @@ class PDFParser:
             if line[:35].strip() not in ["", "Reserve Capacity:"]:
                 self.state = "properties"
                 return
-
-            match = re.match(r"""^
-                             (\ +Reserve\ Capacity:|) # Optionally include label since it only occurs on the first line
-                             \ +(?P<expiration_date>[0-3][0-9]-[A-Z]{3}-[0-9]{4}) # Look for one or more space and then find expiration_date of DD-MON-YYYY
-                             \ +(?P<description>\S(\S|\ \S)+) # Look for one or more space and then find description string with only one space in a row allowed
-                             \ +(?P<cap>[0-9]{1,3}) # Look for one or more more space and then find cap of 1-3 digit number
-                             \ +(?P<tot>[0-9]{1,3}) # Look for one or more more space and then find tot of 1-3 digit number
-                             ((Reserve\ Enrl\ Cap:Reserve\ Enrl\ Tot:)|) # Optionally include the labels since those only occur on the first line
-                             $""", line, re.VERBOSE)
             
             reserve_cap = ClassReserveCapacity(
                 class_number=self.class_obj.class_number,
                 term=self.term,
-                expire_date=datetime.datetime.strptime(match.group("expiration_date"), "%d-%b-%Y"),
-                description=match.group("description"),
-                enroll_cap=int(match.group("cap")),
-                enroll_total=int(match.group("tot")))
+                expire_date=datetime.datetime.strptime(line[34:45], "%d-%b-%Y"),
+                description=line[47:95].strip(),
+                enroll_cap=int(line[95:98]),
+                enroll_total=int(line[99:131]))
             self.extras.append(reserve_cap)
             if self.class_obj.reserve_capacities is None:
                 self.class_obj.reserve_capacities = []
@@ -578,7 +564,6 @@ if __name__ == "__main__":
 
     # TODO: Add the rest of the processing
     # TODO: Connect to a temporary database at first, then move everything over to the live database once all processing is done and successful
-    # TODO: Log to file
     # TODO: Print out the total number of generated course entries in pdf and search processing
-    # FIXME: nothing seems to be getting written
+    # TODO: Convert stuff back to index based collection where possible (instructor, etc)
     process_pdfs()
