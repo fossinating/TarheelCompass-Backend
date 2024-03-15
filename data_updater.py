@@ -393,7 +393,9 @@ class PDFParser:
             self.class_obj.title = match.group("title")
             self.class_obj.component = match.group("component")
             self.class_obj.units = match.group("units")
-            self.class_obj.topics = match.group("topics")
+            self.class_obj.topics = match.group("topics"),
+            self.class_obj.last_updated_at=self.source_datetime
+            self.class_obj.last_updated_from="pdf"
             self.state = "instruction_type"
             return
         if self.state == "instruction_type":

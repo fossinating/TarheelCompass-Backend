@@ -34,13 +34,14 @@ class Class(Base):
     # FYS MASQS OF BLACKNESS
     component: Mapped[str] = mapped_column(Text)
     # Lecture
-    topics: Mapped[str] = mapped_column(Text)
+    topics: Mapped[Optional[str]] = mapped_column(Text)
     # A (I really don't know what this is for tbh)
     term: Mapped[str] = mapped_column(String(20), primary_key=True)
     # SPRING 2024
     units: Mapped[str] = mapped_column(String(40))
     # 3
-    meeting_dates: Mapped[str] = mapped_column(String(30))
+    meeting_dates: Mapped[Optional[str]] = mapped_column(String(30))
+    # Not provided in pdf and thus must be optional
     instruction_type: Mapped[str] = mapped_column(String)
     schedules: Mapped[List["ClassSchedule"]] = relationship("ClassSchedule")
     enrollment_cap: Mapped[int] = mapped_column(Integer)
@@ -48,9 +49,9 @@ class Class(Base):
     waitlist_cap: Mapped[int] = mapped_column(Integer)
     waitlist_total: Mapped[int] = mapped_column(Integer)
     min_enrollment: Mapped[int] = mapped_column(Integer)
-    combined_section_id: Mapped[str] = mapped_column(Text)
-    equivalents: Mapped[str] = mapped_column(Text)
-    reserve_capacities: Mapped[List["ClassReserveCapacity"]] = relationship("ClassReserveCapacity")
+    combined_section_id: Mapped[Optional[str]] = mapped_column(Text)
+    equivalents: Mapped[Optional[str]] = mapped_column(Text)
+    reserve_capacities: Mapped[Optional[List["ClassReserveCapacity"]]] = relationship("ClassReserveCapacity")
     last_updated_at: Mapped[DateTime] = mapped_column(DateTime)
     last_updated_from: Mapped[str] = mapped_column(String(7))
 
@@ -121,8 +122,8 @@ class ClassSchedule(Base):
     instructors: Mapped[List["Instructor"]] = relationship("Instructor", secondary=schedule_instructor_join_table)
     days: Mapped[str] = mapped_column(String(10))
     # start time and end time are in minutes since midnight
-    start_time: Mapped[int] = mapped_column(Integer)
-    end_time: Mapped[int] = mapped_column(Integer)
+    start_time: Mapped[Optional[int]] = mapped_column(Integer)
+    end_time: Mapped[Optional[int]] = mapped_column(Integer)
     class_number: Mapped[int] = mapped_column(Integer)
     term: Mapped[str] = mapped_column(String(20))
     __table_args__ = (ForeignKeyConstraint((class_number, term), (Class.class_number, Class.term)), {})
@@ -155,7 +156,7 @@ class Course(Base):
     title: Mapped[str] = mapped_column(Text)
     credits: Mapped[str] = mapped_column(String(20))
     description: Mapped[Optional[str]] = mapped_column(Text)
-    attrs: Mapped[List["CourseAttribute"]] = relationship("CourseAttribute")
+    attrs: Mapped[Optional[List["CourseAttribute"]]] = relationship("CourseAttribute")
     last_updated_at: Mapped[DateTime] = mapped_column(DateTime)
     last_updated_from: Mapped[str] = mapped_column(String(7))
 
