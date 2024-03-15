@@ -361,39 +361,30 @@ class PDFParser:
                 self.errors += 1
                 self.reset_state()
                 return
-            match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
-                               \ {1,4}(?P<subject>[A-Z]{3,4}) # Look for 1-4 spaces, then find a subject that is 3-4 of [A-z] (case-insensitive letter)
-                               \ {6,7}(?P<course_num>\S{2,3}) # Look for 6-7 spaces, then find a course_num that is 2-3 non-whitespace characters
-                               \ {5,10}(?P<section>\S{1,9}) # Look for 5-10 spaces, then find a section that is 1-9 non-whitespace characters
-                               \ {5,10}(?P<class_num>[0-9]{1,12}) # Look for 5-10 spaces, then find a class_num that is 1-12 [0-9] (any digit)
-                               \ {5,13}(?P<title>\S(\S|.\S){1,29}) # Look for 5-13 spaces, then find a title that is one non-whitespace followed by 1-29 non-whitespace|any+non-whitespace (just making sure that there is only up to one space in a row)
-                               \ {1,30}(?P<component>[A-z]{1,29}) # Look for 1-30 spaces, then find a component that is 1-29 [A-z] (case-insensitive letter)
-                               \ {1,30}(?P<units>([0-9]{1,2}|[0-9]{1,2} \- [0-9]{1,2})) # Look for 1-30 spaces, then find a unit that is either two digits or two digits followed by ` - ` followed by two digits
-                               \ {2,15}(?P<topics>(|(\S(.\S|\S){0,29}))) # Look for 2-15 spaces, then maybe find a topic that is one non-whitespace followed by 1-29 non-whitespace|any+non-whitespace
-                               \ {1,30}[\S]+ # Look for 1-30 spaces, then find an extra character(s) at the end(I have no clue what the purpose of it is I will be entirely honest)
-                               $""", line, re.VERBOSE)
             # Notes on the extra characters:
             # So far I've found:
             # A(standard, on almost everything)
             # X(only on LAW classes)
             # SSB2(Summer Session 2)
-            course_id = match.group("subject") + " " + match.group("course_num")
+
+            # I'm not doing regex here because I can't figure out how to include optional spaces in the character counter.
+            course_id = line[2:6] + " " + line[6:15].strip()
             if self.db_session.scalar(select(Course.code).filter_by(code=course_id)) is None and course_id not in self.missing_courses:
                 self.missing_courses.append(course_id)
                 self.course = Course(
                     code=course_id,
-                    title=match.group("title"),
+                    title=line[44:73].strip(),
                     credits=match.group("units"),
                     last_updated_at=self.source_datetime,
                     last_updated_from="pdf"
                 )
             self.class_obj.course_id = course_id
-            self.class_obj.class_section = match.group("section")
-            self.class_obj.class_number = int(match.group("class_num"))
-            self.class_obj.title = match.group("title")
-            self.class_obj.component = match.group("component")
-            self.class_obj.units = match.group("units")
-            self.class_obj.topics = match.group("topics"),
+            self.class_obj.class_section = line[15:26].strip()
+            self.class_obj.class_number = int(line[26:37])
+            self.class_obj.title = line[44:73].strip()
+            self.class_obj.component = line[74:102].strip()
+            self.class_obj.units = line[102:114].strip()
+            self.class_obj.topics = line[114:143].strip(),
             self.class_obj.last_updated_at=self.source_datetime
             self.class_obj.last_updated_from="pdf"
             self.state = "instruction_type"
