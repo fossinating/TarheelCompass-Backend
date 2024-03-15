@@ -154,7 +154,7 @@ class Course(Base):
     code: Mapped[str] = mapped_column(String(10), primary_key=True)
     title: Mapped[str] = mapped_column(Text)
     credits: Mapped[str] = mapped_column(String(20))
-    description: Mapped[str] = mapped_column(Text)
+    description: Mapped[Optional[str]] = mapped_column(Text)
     attrs: Mapped[List["CourseAttribute"]] = relationship("CourseAttribute")
     last_updated_at: Mapped[DateTime] = mapped_column(DateTime)
     last_updated_from: Mapped[str] = mapped_column(String(7))

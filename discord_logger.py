@@ -18,6 +18,7 @@ class DiscordLogger():
         self.name = name
         self.debug_lines = []
         self.logger = logging.getLogger(logger_name if logger_name is not None else name.replace(" ", "-").lower())
+        self.logger.setLevel(logging.DEBUG)
 
     def send_message(self, level, msg, color):
         return # I don't want to actually send messages for now since I'm doing local testing

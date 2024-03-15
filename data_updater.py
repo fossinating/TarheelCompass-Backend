@@ -19,10 +19,24 @@ from models import ClassReserveCapacity, Course, Class, CourseAttribute, TermDat
 from utilities import search_to_schedule, get_or_create_instructor, safe_cast, standardize_term
 
 from pypdf import PdfReader
+import pathlib
+
+import logging
+
+formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+
+from logging.handlers import TimedRotatingFileHandler
+debug_handler = TimedRotatingFileHandler((pathlib.Path(__file__).parent / "logs" / "debug.log").resolve(), when="midnight", backupCount=14)
+debug_handler.suffix = "%Y%m%d"
+debug_handler.setLevel(logging.DEBUG)
+debug_handler.setFormatter(formatter)
 
 dotenv.load_dotenv()
-logger = DiscordLogger(os.getenv("DISCORD_WEBHOOK_URL"), "Tarheel Compass Data")
+logger = DiscordLogger(os.getenv("DISCORD_WEBHOOK_URL"), "Tarheel Compass Data", 'tarheel-compass-data')
 
+logger.logger.addHandler(debug_handler)
+logging.getLogger("sqlalchemy.engine").addHandler(debug_handler)
+logging.getLogger("sqlalchemy.engine").setLevel(logging.DEBUG)
 
 def get_root_text(html_element):
     if isinstance(html_element, NavigableString):
@@ -238,6 +252,14 @@ class PDFParser:
         self.db_session = scoped_session(session_factory)
         self.missing_courses = []
         self.errors = 0
+        self.state_logger = logging.getLogger("state_logger")
+        self.state_logger.setLevel(logging.DEBUG)
+        state_log_handler = TimedRotatingFileHandler((pathlib.Path(__file__).parent / "logs" / "state.log").resolve(), when="midnight", backupCount=14)
+        state_log_handler.suffix = "%Y%m%d"
+        state_log_handler.setLevel(logging.DEBUG)
+        state_log_handler.setFormatter(formatter)
+        self.state_logger.handlers.clear()
+        self.state_logger.addHandler(state_log_handler)
     
     def reset_state(self):
         self.state = "waiting"
@@ -309,6 +331,7 @@ class PDFParser:
                             logger.error("Reached 5 errors, something serious must be wrong, killing parse attempt.")
                             return
                         try:
+                            self.state_logger.debug(f"{self.state}>|{line}")
                             self.parse_line(line)
                         except (Exception) as e:
                             logger.error(f"Failed to parse line with reason {e}\nLine:`{line}`")
@@ -320,6 +343,7 @@ class PDFParser:
                 # This is done at the very end intentionally so that it won't get updated if we run into any issues
                 term_data_source.last_updated = self.source_datetime
                 self.db_session.commit()
+                self.db_session.close()
         
     def parse_line(self, line: str):
         if self.state == "waiting":
@@ -461,6 +485,8 @@ class PDFParser:
                 self.reset_state()
             return
         if self.state == "properties":
+            if len(line.strip()) == 0:
+                self.state = "notes"
             if line.strip().startswith("Combined Section ID:"):
                 self.class_obj.combined_section_id = line[line.index(":")+1:].strip()
             if line.strip().startswith("Class Equivalents:"):
@@ -505,6 +531,7 @@ class PDFParser:
                 if self.course is not None:
                     self.db_session.add(self.course)
                 self.db_session.add(self.class_obj)
+                logger.debug(f"Adding class {self.class_obj.course_id} - {self.class_obj.class_section} ({self.class_obj.class_number})")
                 return
             if len(line.strip()) > 0:
                 self.class_notes.append(line.strip)
