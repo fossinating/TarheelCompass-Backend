@@ -374,7 +374,7 @@ class PDFParser:
                 self.course = Course(
                     code=course_id,
                     title=line[44:73].strip(),
-                    credits=match.group("units"),
+                    credits=line[102:114].strip(),
                     last_updated_at=self.source_datetime,
                     last_updated_from="pdf"
                 )
@@ -384,7 +384,7 @@ class PDFParser:
             self.class_obj.title = line[44:73].strip()
             self.class_obj.component = line[74:102].strip()
             self.class_obj.units = line[102:114].strip()
-            self.class_obj.topics = line[114:143].strip(),
+            self.class_obj.topics = line[114:143].strip()
             self.class_obj.last_updated_at=self.source_datetime
             self.class_obj.last_updated_from="pdf"
             self.state = "instruction_type"
