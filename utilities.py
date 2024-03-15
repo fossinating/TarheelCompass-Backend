@@ -39,6 +39,9 @@ def humanize_hour(hour):
 def get_or_create_instructor(name, type=None, db_session=None):
     if db_session is None:
         db_session = scoped_session(session_factory)
+
+    if name == "":
+        name = None
         
     instructor = db_session.query(Instructor).filter_by(
         # I believe this should split the dictionary out into kwargs

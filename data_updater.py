@@ -269,6 +269,8 @@ class PDFParser:
         self.schedule = None
         self.class_notes = []
         self.course = None
+        self.instructor_name = None
+        self.instructor_type = None
 
     
     def parse(self, force=False):
@@ -408,6 +410,51 @@ class PDFParser:
             else:
                 if len(line.strip()) > 0:
                     self.class_notes.append(line.strip())
+        if self.state == "instructor":
+            # If line starts with Class Enrl, add schedule, change state to enrollment, and process for same line
+            if line.strip().startswith("Class Enrl"):
+                self.schedule.instructors.append(get_or_create_instructor(self.instructor_name, self.instructor_type, self.db_session))
+                self.instructor_name = None
+                self.instructor_type = None
+                self.class_obj.schedules.append(self.schedule)
+                self.extras.append(self.schedule)
+                self.schedule = None
+                self.state = "enrollment"
+            # If line starts with Bldg, add schedule, change state to schedule, and process for same line
+            elif line.strip().startswith("Bldg"):
+                self.schedule.instructors.append(get_or_create_instructor(self.instructor_name, self.instructor_type, self.db_session))
+                self.instructor_name = None
+                self.instructor_type = None
+                self.class_obj.schedules.append(self.schedule)
+                self.extras.append(self.schedule)
+                self.schedule = None
+                self.state = "schedule"
+            # If line is empty(all spaces), catch that as the end of an instructor and add that to the registry
+            elif len(line.strip()) == 0:
+                if self.instructor_type is not None:
+                    self.schedule.instructors.append(get_or_create_instructor(self.instructor_name, self.instructor_type, self.db_session))
+                self.instructor_name = None
+                self.instructor_type = None
+                return
+            # Otherwise, process as an instructor entry
+            else:
+                # Try to process as a normal instructor entry
+                match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
+                                \ +(?P<type>[A-Z]+) # Look for one or more space and then get type as capitalized letter string
+                                \ +([0-9]|\.)+ # Look for one or more space and then a number(we ignore this for now bc i have no clue what the purpose of it is), or a period because apparently this can be a float
+                                \ +Instructor:(?P<name>.*) # Look for zero(since apparnetly a name can be empty) or more space and then `Instructor:` and then take the rest as the instructor name
+                                $""", line, re.VERBOSE)
+                if match is None:
+                    # If it could not be processed as a normal instructor entry, assume it is a continuation in which case just get the string at the end
+                    match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
+                                \ {140:} # Look for 140 or more spaces
+                                (?P<name_ext>\S.*) # Take any string as an extension to the instructor's name, as long as the string doesn't start with a space
+                                $""", line, re.VERBOSE)
+                    self.instructor_name += match.group("name_ext")
+                else:
+                    self.instructor_name = match.group("name")
+                    self.instructor_type = match.group("type")
+                    return
         if self.state == "schedule" or self.state == "schedule|enrollment":
             if line.strip().startswith("Bldg:"):
                 match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
@@ -436,24 +483,6 @@ class PDFParser:
                 return
             if self.state == "schedule|enrollment" and line.strip().startswith("Class"):
                 self.state = "enrollment"
-        if self.state == "instructor":
-            if len(line.strip()) == 0 or line.strip().startswith("Class Enrl"):
-                self.class_obj.schedules.append(self.schedule)
-                self.extras.append(self.schedule)
-                self.schedule = None
-                if len(line.strip()) == 0:
-                    self.state = "schedule|enrollment"
-                    return
-                else:
-                    self.state = "enrollment"
-            else:
-                match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
-                                \ +(?P<type>[A-Z]+) # Look for one or more space and then get type as capitalized letter string
-                                \ +([0-9]|\.)+ # Look for one or more space and then a number(we ignore this for now bc i have no clue what the purpose of it is), or a period because apparently this can be a float
-                                \ +Instructor:(?P<name>.*) # Look for one or more space and then `Instructor:` and then take the rest as the instructor name
-                                $""", line, re.VERBOSE)
-                self.schedule.instructors.append(get_or_create_instructor(match.group("name") if len(match.group("name")) > 0 else None, match.group("type"), self.db_session))
-                return
         if self.state == "enrollment":
             if not line.strip().startswith("Class"):
                 logger.error(f"Looking for enrollment but got `{line}`")
@@ -570,4 +599,7 @@ if __name__ == "__main__":
     # TODO: Add the rest of the processing
     # TODO: Connect to a temporary database at first, then move everything over to the live database once all processing is done and successful
     # TODO: Print out the total number of generated course entries in pdf and search processing
+    # FIXME: For some ungodly reason, some classes have their instructors listed on multiple lines under the same entry. This should not ever happen, however it does, and I need to find a way to handle it.
+        # Example class is GERM 102-003(2593)
+        # Potential options include detecting that theres a shit ton of spaces and then reading it as a continuation? This would require me to go back and add to an already-entered instructor but that's okay
     process_pdfs()
