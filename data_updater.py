@@ -431,13 +431,6 @@ class PDFParser:
                 self.extras.append(self.schedule)
                 self.schedule = None
                 self.state = "schedule"
-            # If line is empty(all spaces), catch that as the end of an instructor and add that to the registry
-            elif len(line.strip()) == 0:
-                if self.instructor_type is not None:
-                    self.schedule.instructors.append(get_or_create_instructor(self.instructor_name, self.instructor_type, self.db_session))
-                self.instructor_name = None
-                self.instructor_type = None
-                return
             # Otherwise, process as an instructor entry
             else:
                 # Try to process as a normal instructor entry
@@ -452,8 +445,12 @@ class PDFParser:
                                 \ {140:} # Look for 140 or more spaces
                                 (?P<name_ext>\S.*) # Take any string as an extension to the instructor's name, as long as the string doesn't start with a space
                                 $""", line, re.VERBOSE)
-                    self.instructor_name += match.group("name_ext")
+                    if match is not None:
+                        self.instructor_name += match.group("name_ext")
                 else:
+                    # When finding a new instructor, add the currently saved instructor data before saving more information
+                    if self.instructor_type is not None:
+                        self.schedule.instructors.append(get_or_create_instructor(self.instructor_name, self.instructor_type, self.db_session))
                     self.instructor_name = match.group("name")
                     self.instructor_type = match.group("type")
                     return
@@ -561,7 +558,7 @@ class PDFParser:
 
 
 # Read through the directory of class listings
-def process_pdfs():
+def process_pdfs(force=False):
     logger.debug("Getting directory of pdfs")
 
     response = requests.get("https://registrar.unc.edu/courses/schedule-of-classes/directory-of-classes-2/")
@@ -591,7 +588,7 @@ def process_pdfs():
 
         db_session.commit()
         db_session.close()
-        parser.parse(force=True)
+        parser.parse(force=force)
 
 
 if __name__ == "__main__":
