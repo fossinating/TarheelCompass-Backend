@@ -263,7 +263,7 @@ class PDFParser:
     
     def reset_state(self):
         self.state = "waiting"
-        self.class_obj = Class(term=self.term)
+        self.class_data = None
         self.extras = []
         self.schedule = None
         self.class_notes = []
@@ -378,15 +378,18 @@ class PDFParser:
                     last_updated_at=self.source_datetime,
                     last_updated_from="pdf"
                 )
-            self.class_obj.course_id = course_id
-            self.class_obj.class_section = line[15:26].strip()
-            self.class_obj.class_number = int(line[26:37])
-            self.class_obj.title = line[44:73].strip()
-            self.class_obj.component = line[74:102].strip()
-            self.class_obj.units = line[102:114].strip()
-            self.class_obj.topics = line[114:143].strip()
-            self.class_obj.last_updated_at=self.source_datetime
-            self.class_obj.last_updated_from="pdf"
+            self.class_obj = Class(
+                term = self.term,
+                course_id = course_id,
+                class_section = line[15:26].strip(),
+                class_number = int(line[26:37]),
+                title = line[44:73].strip(),
+                component = line[74:102].strip(),
+                units = line[102:114].strip(),
+                topics = line[114:143].strip(),
+                last_updated_at=self.source_datetime,
+                last_updated_from="pdf",
+            )
             self.state = "instruction_type"
             return
         if self.state == "instruction_type":
