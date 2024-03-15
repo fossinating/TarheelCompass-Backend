@@ -18,7 +18,7 @@ class Instructor(Base):
     __tablename__ = "instructor"
     id: Mapped[int] = mapped_column(primary_key=True)
     instructor_type: Mapped[str] = mapped_column(String(6))
-    name: Mapped[str] = mapped_column(Text)
+    name: Mapped[Optional[str]] = mapped_column(Text)
 
 
 class Class(Base):

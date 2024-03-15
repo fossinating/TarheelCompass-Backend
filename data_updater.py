@@ -450,9 +450,9 @@ class PDFParser:
                 match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
                                 \ +(?P<type>[A-Z]+) # Look for one or more space and then get type as capitalized letter string
                                 \ +([0-9]|\.)+ # Look for one or more space and then a number(we ignore this for now bc i have no clue what the purpose of it is), or a period because apparently this can be a float
-                                \ +Instructor:(?P<name>.+) # Look for one or more space and then `Instructor:` and then take the rest as the instructor name
+                                \ +Instructor:(?P<name>.*) # Look for one or more space and then `Instructor:` and then take the rest as the instructor name
                                 $""", line, re.VERBOSE)
-                self.schedule.instructors.append(get_or_create_instructor(match.group("name"), match.group("type"), self.db_session))
+                self.schedule.instructors.append(get_or_create_instructor(match.group("name") if len(match.group("name")) > 0 else None, match.group("type"), self.db_session))
                 return
         if self.state == "enrollment":
             if not line.strip().startswith("Class"):
@@ -570,5 +570,4 @@ if __name__ == "__main__":
     # TODO: Add the rest of the processing
     # TODO: Connect to a temporary database at first, then move everything over to the live database once all processing is done and successful
     # TODO: Print out the total number of generated course entries in pdf and search processing
-    # TODO: Convert stuff back to index based collection where possible (instructor, etc)
     process_pdfs()
