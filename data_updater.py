@@ -14,7 +14,7 @@ from sqlalchemy.orm import scoped_session
 from sqlalchemy import delete, select
 from tqdm import tqdm
 from database import session_factory
-from models import ClassReserveCapacity, Course, Class, CourseAttribute, TermDataSource, TermData, ClassSchedule
+from models import ClassReserveCapacity, Course, Class, CourseAttribute, TermDataSource, TermData, ClassSchedule, ClassEnrollmentStamp
 from utilities import search_to_schedule, get_or_create_instructor, safe_cast
 from pypdf import PdfReader
 import pathlib
@@ -208,7 +208,7 @@ def process_class_search():
             timestamp=timestamp, source="search").first() is None):
             db_session.add(ClassEnrollmentStamp(
                     class_number=class_number,
-                    term=standardize_term(class_data["term"]),
+                    term=standardize_term_from_class_search(class_data["term"]),
                     enrollment_total=-1 * safe_cast(class_data["available seats"], int, 1),
                     timestamp=timestamp,
                     source="search"
@@ -558,13 +558,13 @@ class PDFParser:
 
             self.db_session.add(ClassEnrollmentStamp(
                     class_number=self.class_obj.enrollment_cap,
-                    term=term,
-                    enrollment_cap=class_data["enrollment_cap"],
+                    term=self.term,
+                    enrollment_cap=self.class_obj.enrollment_cap,
                     enrollment_total=self.class_obj.enrollment_total,
                     waitlist_cap=self.class_obj.waitlist_cap,
                     waitlist_total=self.class_obj.waitlist_total,
                     min_enrollment=self.class_obj.min_enrollment,
-                    timestamp=generated_time,
+                    timestamp=self.source_timestamp,
                     source="pdf"
                 ))
 
