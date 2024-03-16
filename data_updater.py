@@ -71,51 +71,60 @@ def process_course_catalog():
     db_session = scoped_session(session_factory)
     add_queue = []
     timestamp = datetime.datetime.now()
+    errors = 0
     for subject in tqdm(subjects, position=0, leave=False, desc="Subjects"):
-        response = requests.get(f"https://catalog.unc.edu/courses/{subject.lower()}/")
+        try:
+            response = requests.get(f"https://catalog.unc.edu/courses/{subject.lower()}/")
 
-        soup = BeautifulSoup(str(response.content).replace("\\n", "")
-                             .replace("\\xc2\\xa0", " ").encode('utf-8').decode("unicode_escape"), "html.parser")
+            soup = BeautifulSoup(str(response.content).replace("\\n", "")
+                                .replace("\\xc2\\xa0", " ").encode('utf-8').decode("unicode_escape"), "html.parser")
 
-        for course in tqdm(soup.select(".courseblock"), position=1, leave=False, desc=subject):
-            attributes = []
-            attribute_codes = ["grading_status", "making_connections", "requisites", "repeat_rules", "idea_action",
-                               "same_as", "global_language"]
+            for course in tqdm(soup.select(".courseblock"), position=1, leave=False, desc=subject):
+                attributes = []
+                attribute_codes = ["grading_status", "making_connections", "requisites", "repeat_rules", "idea_action",
+                                "same_as", "global_language"]
 
-            for attribute_code in attribute_codes:
-                attribute_block = course.select_one(".detail-" + attribute_code)
-                if attribute_block is not None:
-                    strong_text = attribute_block.select_one("strong").text
-                    other_text = attribute_block.text.replace(strong_text, "")
-                    attributes.append(CourseAttribute(
-                        label=strong_text.strip().strip(".:"),
-                        value=other_text.strip().strip(".")))
+                for attribute_code in attribute_codes:
+                    attribute_block = course.select_one(".detail-" + attribute_code)
+                    if attribute_block is not None:
+                        strong_text = attribute_block.select_one("strong").text
+                        other_text = attribute_block.text.replace(strong_text, "")
+                        attributes.append(CourseAttribute(
+                            label=strong_text.strip().strip(".:"),
+                            value=other_text.strip().strip(".")))
 
-            course_obj = db_session.scalar(select(Course).filter_by(
-                code=course.select_one(".detail-code strong").text.strip(".")))
-            add_queue.extend(attributes)
+                course_obj = db_session.scalar(select(Course).filter_by(
+                    code=course.select_one(".detail-code strong").text.strip(".")))
+                add_queue.extend(attributes)
 
-            if course_obj is None:
-                add_queue.append(Course(
-                    code=course.select_one(".detail-code strong").text.strip("."),
-                    title=course.select_one(".detail-title strong").text.strip("."),
-                    credits=course.select_one(".detail-hours strong").text.strip(".").replace(" Credits", ""),
-                    description=("" if course.select_one(".courseblockextra") is None else
-                                 course.select_one(".courseblockextra").text.strip(".")),
-                    attrs=attributes,
-                    last_updated_at=timestamp,
-                    last_updated_from="catalog"
-                ))
-            else:
-                for attribute in course_obj.attrs:
-                    db_session.delete(attribute)
-                course_obj.title = course.select_one(".detail-title strong").text.strip(".")
-                course_obj.credits = course.select_one(".detail-hours strong").text.strip(".").replace(" Credits", "")
-                course_obj.description = ("" if course.select_one(".courseblockextra") is None else
-                                          course.select_one(".courseblockextra").text.strip("."))
-                course_obj.attrs = attributes
-                course_obj.last_updated_at = timestamp
-                course_obj.last_updated_from = "catalog"
+                if course_obj is None:
+                    add_queue.append(Course(
+                        code=course.select_one(".detail-code strong").text.strip("."),
+                        title=course.select_one(".detail-title strong").text.strip("."),
+                        credits=course.select_one(".detail-hours strong").text.strip(".").replace(" Credits", ""),
+                        description=("" if course.select_one(".courseblockextra") is None else
+                                    course.select_one(".courseblockextra").text.strip(".")),
+                        attrs=attributes,
+                        last_updated_at=timestamp,
+                        last_updated_from="catalog"
+                    ))
+                else:
+                    for attribute in course_obj.attrs:
+                        db_session.delete(attribute)
+                    course_obj.title = course.select_one(".detail-title strong").text.strip(".")
+                    course_obj.credits = course.select_one(".detail-hours strong").text.strip(".").replace(" Credits", "")
+                    course_obj.description = ("" if course.select_one(".courseblockextra") is None else
+                                            course.select_one(".courseblockextra").text.strip("."))
+                    course_obj.attrs = attributes
+                    course_obj.last_updated_at = timestamp
+                    course_obj.last_updated_from = "catalog"
+        except (Exception) as e:
+            logger.error(f"Failed to process subject {subject}: {e}")
+            errors += 1
+            if errors >= 5:
+                logger.error("Failed 5 times, something critical must be wrong")
+                return
+
     db_session.add_all(add_queue)
     db_session.commit()
     db_session.close()
@@ -176,99 +185,107 @@ def process_class_search():
 
     rows = soup.select("#results-table > tbody > tr")
     static_class_data = {}
+    errors = 0
     for row in tqdm(rows, position=0):
-        class_data = {}
-        i = 0
-        while i < len(row.contents):
-            key = row.contents[i].split(";")[0].strip()
-            value = get_root_text(row.contents[i + 1])
-            class_data[key] = value
-            static_class_data[key] = value
-            i += 2
+        try:
+            class_data = {}
+            i = 0
+            while i < len(row.contents):
+                key = row.contents[i].split(";")[0].strip()
+                value = get_root_text(row.contents[i + 1])
+                class_data[key] = value
+                static_class_data[key] = value
+                i += 2
 
-        # check to see if the course exists, if not leave a warning
-        course_id = static_class_data["subject"] + " " + static_class_data["catalog number"]
-        if db_session.query(Course.code).filter_by(code=course_id).first() is None and course_id not in missing_courses:
-            missing_courses.append(course_id)
-            db_session.add(Course(
-                code=course_id,
-                title=class_data["course description"],
-                description=None,
-                credits=class_data["credit hours"],
-                last_updated_at=timestamp,
-                last_updated_from="search"
-            ))
+            # check to see if the course exists, if not leave a warning
+            course_id = static_class_data["subject"] + " " + static_class_data["catalog number"]
+            if db_session.query(Course.code).filter_by(code=course_id).first() is None and course_id not in missing_courses:
+                missing_courses.append(course_id)
+                db_session.add(Course(
+                    code=course_id,
+                    title=class_data["course description"],
+                    description=None,
+                    credits=class_data["credit hours"],
+                    last_updated_at=timestamp,
+                    last_updated_from="search"
+                ))
 
-        class_number = safe_cast(class_data["class number"], int, -1)
+            class_number = safe_cast(class_data["class number"], int, -1)
 
-        # weird quirk is that some classes will be listed twice in the class search if they have inconsistent schedules, for example certain language classes
-        # dont record a stamp if the class has already been recorded, since theoretically the info should already be saved
-        if (db_session.query(ClassEnrollmentStamp).filter_by(
-            class_number=class_number, term=standardize_term_from_class_search(class_data["term"]), 
-            timestamp=timestamp, source="search").first() is None):
-            db_session.add(ClassEnrollmentStamp(
+            # weird quirk is that some classes will be listed twice in the class search if they have inconsistent schedules, for example certain language classes
+            # dont record a stamp if the class has already been recorded, since theoretically the info should already be saved
+            if (db_session.query(ClassEnrollmentStamp).filter_by(
+                class_number=class_number, term=standardize_term_from_class_search(class_data["term"]), 
+                timestamp=timestamp, source="search").first() is None):
+                db_session.add(ClassEnrollmentStamp(
+                        class_number=class_number,
+                        term=standardize_term_from_class_search(class_data["term"]),
+                        enrollment_total=-1 * safe_cast(class_data["available seats"], int, 1),
+                        timestamp=timestamp,
+                        source="search"
+                ))
+
+            class_obj = db_session.query(Class).filter_by(
+                class_number=class_number, term=standardize_term_from_class_search(class_data["term"])).first()
+            if class_obj is None:
+                if str(class_number) in missing_classes:
+                    continue
+                missing_classes.append(str(class_number))
+
+                schedule = search_to_schedule(db_session, class_data, standardize_term_from_class_search(class_data["term"]))
+                db_session.add(schedule)
+
+                db_session.add(Class(
+                    course_id=course_id,
+                    class_section=class_data["section number"],
                     class_number=class_number,
+                    title=class_data["course description"],
                     term=standardize_term_from_class_search(class_data["term"]),
+                    units=class_data["credit hours"],
+                    meeting_dates=class_data["meeting dates"],
+                    instruction_type=class_data["instruction mode"],
+                    schedules=[schedule],
                     enrollment_total=-1 * safe_cast(class_data["available seats"], int, 1),
-                    timestamp=timestamp,
-                    source="search"
-            ))
+                    last_updated_at=timestamp,
+                    last_updated_from="search"
+                ))
+            else:
+                # add/update the meeting dates since this isnt available in the pdf
+                class_obj.meeting_dates = class_data["meeting dates"]
+                # add/update the instruction type since this isn't scraped from the pdf
+                class_obj.instruction_type = class_data["instruction mode"]
+                generated_schedule = search_to_schedule(db_session, class_data, standardize_term_from_class_search(class_data["term"]))
+                found_match = False
+                # search through all of the schedules to find a matching one
+                for schedule in class_obj.schedules:
+                    if generated_schedule.days == schedule.days and \
+                            generated_schedule.start_time == schedule.start_time and \
+                            generated_schedule.end_time == schedule.end_time:
+                        found_match = True
+                        # if a match is found, check if the instructor is included
+                        if class_data["primary instructor name(s)"] not in [instructor.name for instructor in schedule.instructors]:
+                            # if instructor not included, add it
+                            schedule.instructors.append(get_or_create_instructor(db_session, class_data["primary instructor name(s)"]))
+                        break
 
-        class_obj = db_session.query(Class).filter_by(
-            class_number=class_number, term=standardize_term_from_class_search(class_data["term"])).first()
-        if class_obj is None:
-            if str(class_number) in missing_classes:
-                continue
-            missing_classes.append(str(class_number))
+                # if a matching schedule not found, add the generated one
+                if not found_match:
+                    class_obj.schedules.append(generated_schedule)
 
-            schedule = search_to_schedule(db_session, class_data, standardize_term_from_class_search(class_data["term"]))
-            db_session.add(schedule)
+                # update enrollment total
+                class_obj.enrollment_total = \
+                    (0 if class_obj.enrollment_cap is None else class_obj.enrollment_cap) \
+                    - safe_cast(class_data["available seats"], int, -1)
 
-            db_session.add(Class(
-                course_id=course_id,
-                class_section=class_data["section number"],
-                class_number=class_number,
-                title=class_data["course description"],
-                term=standardize_term_from_class_search(class_data["term"]),
-                units=class_data["credit hours"],
-                meeting_dates=class_data["meeting dates"],
-                instruction_type=class_data["instruction mode"],
-                schedules=[schedule],
-                enrollment_total=-1 * safe_cast(class_data["available seats"], int, 1),
-                last_updated_at=timestamp,
-                last_updated_from="search"
-            ))
-        else:
-            # add/update the meeting dates since this isnt available in the pdf
-            class_obj.meeting_dates = class_data["meeting dates"]
-            # add/update the instruction type since this isn't scraped from the pdf
-            class_obj.instruction_type = class_data["instruction mode"]
-            generated_schedule = search_to_schedule(db_session, class_data, standardize_term_from_class_search(class_data["term"]))
-            found_match = False
-            # search through all of the schedules to find a matching one
-            for schedule in class_obj.schedules:
-                if generated_schedule.days == schedule.days and \
-                        generated_schedule.start_time == schedule.start_time and \
-                        generated_schedule.end_time == schedule.end_time:
-                    found_match = True
-                    # if a match is found, check if the instructor is included
-                    if class_data["primary instructor name(s)"] not in [instructor.name for instructor in schedule.instructors]:
-                        # if instructor not included, add it
-                        schedule.instructors.append(get_or_create_instructor(db_session, class_data["primary instructor name(s)"]))
-                    break
-
-            # if a matching schedule not found, add the generated one
-            if not found_match:
-                class_obj.schedules.append(generated_schedule)
-
-            # update enrollment total
-            class_obj.enrollment_total = \
-                (0 if class_obj.enrollment_cap is None else class_obj.enrollment_cap) \
-                - safe_cast(class_data["available seats"], int, -1)
-
-            # update last updated info
-            class_obj.last_updated_at = timestamp
-            class_obj.last_updated_from = "search"
+                # update last updated info
+                class_obj.last_updated_at = timestamp
+                class_obj.last_updated_from = "search"
+        except Exception as e:
+            logger.error(f"Failed to read class: {e}")
+            errors += 1
+            if errors >= 5:
+                logger.error("Failed 5 times, something critical must be wrong")
+                return
     
     db_session.commit()
     db_session.close()
@@ -387,7 +404,6 @@ class PDFParser:
                             logger.error(f"Failed to parse line with reason {e}\nLine:`{line}`")
                             self.errors += 1
                             self.reset_state()
-                            raise e
                 
                 logger.info(f"Created entries for {len(self.missing_courses)} missing courses: " + ",".join(self.missing_courses))
                 # Update the last_updated value
@@ -659,8 +675,8 @@ if __name__ == "__main__":
     init_db()
 
     # TODO: Connect to a temporary database at first, then move everything over to the live database once all processing is done and successful
-    #process_course_catalog()
+    process_course_catalog()
 
-    #process_pdfs()
+    process_pdfs()
 
     process_class_search()
