@@ -43,7 +43,7 @@ class Class(Base):
     meeting_dates: Mapped[Optional[str]] = mapped_column(String(30))
     # Not provided in pdf and thus must be optional
     instruction_type: Mapped[str] = mapped_column(String)
-    schedules: Mapped[List["ClassSchedule"]] = relationship("ClassSchedule")
+    schedules: Mapped[List["ClassSchedule"]] = relationship("ClassSchedule", cascade="all, delete", passive_deletes=True)
     enrollment_cap: Mapped[Optional[int]] = mapped_column(Integer)
     enrollment_total: Mapped[int] = mapped_column(Integer)
     waitlist_cap: Mapped[Optional[int]] = mapped_column(Integer)
@@ -51,7 +51,7 @@ class Class(Base):
     min_enrollment: Mapped[Optional[int]] = mapped_column(Integer)
     combined_section_id: Mapped[Optional[str]] = mapped_column(Text)
     equivalents: Mapped[Optional[str]] = mapped_column(Text)
-    reserve_capacities: Mapped[Optional[List["ClassReserveCapacity"]]] = relationship("ClassReserveCapacity")
+    reserve_capacities: Mapped[Optional[List["ClassReserveCapacity"]]] = relationship("ClassReserveCapacity", cascade="all, delete", passive_deletes=True)
     last_updated_at: Mapped[DateTime] = mapped_column(DateTime)
     last_updated_from: Mapped[str] = mapped_column(String(7))
 
@@ -199,7 +199,7 @@ class ClassReserveCapacity(Base):
     description: Mapped[str] = mapped_column(String(60))
     enroll_cap: Mapped[int] = mapped_column(Integer)
     enroll_total: Mapped[int] = mapped_column(Integer)
-    __table_args__ = (ForeignKeyConstraint((class_number, term), (Class.class_number, Class.term)), {})
+    __table_args__ = (ForeignKeyConstraint((class_number, term), (Class.class_number, Class.term), ondelete="CASCADE"), {})
     class_reference: Mapped["Class"] = relationship("Class",
                                                     back_populates="reserve_capacities")
 

@@ -447,18 +447,40 @@ class PDFParser:
                     last_updated_at=self.source_datetime,
                     last_updated_from="pdf"
                 )
-            self.class_obj = Class(
-                term = self.term,
-                course_id = course_id,
-                class_section = line[23:32].strip(),
-                class_number = int(line[32:44]),
-                title = line[44:74].strip(),
-                component = line[74:102].strip(),
-                units = line[102:114].strip(),
-                topics = line[114:143].strip(),
-                last_updated_at=self.source_datetime,
-                last_updated_from="pdf",
-            )
+
+            self.class_obj = self.db_session.scalar(select(Class).filter_by(class_number=int(line[32:44]), term=self.term))
+
+            # Mark the self as updating if we're updating an entry rather than adding a new one
+            self.updating = self.class_obj is not None
+
+            if self.class_obj is None:
+                self.class_obj = Class(
+                    term = self.term,
+                    course_id = course_id,
+                    class_section = line[23:32].strip(),
+                    class_number = int(line[32:44]),
+                    title = line[44:74].strip(),
+                    component = line[74:102].strip(),
+                    units = line[102:114].strip(),
+                    topics = line[114:143].strip(),
+                    last_updated_at=self.source_datetime,
+                    last_updated_from="pdf",
+                )
+            else:
+                self.class_obj.course_id = course_id
+                self.class_obj.class_section = line[23:32].strip()
+                self.class_obj.title = line[44:74].strip()
+                self.class_obj.component = line[74:102].strip()
+                self.class_obj.units = line[102:114].strip()
+                self.class_obj.topics = line[114:143].strip()
+                self.class_obj.last_updated_at=self.source_datetime
+                self.class_obj.last_updated_from="pdf"
+                
+                # Remove all the pre-existing schedule instances
+                for schedule in self.class_obj.schedules:
+                    # Reset instructors first so as to get rid of the secondary table associations
+                    schedule.instructors = []
+                    self.db_session.delete(schedule)
             self.state = "instruction_type"
             return
         if self.state == "instruction_type":
@@ -554,7 +576,7 @@ class PDFParser:
                 self.errors += 1
                 self.reset_state()
                 return
-            # TODO: Enrollment stamp
+            
             # The indices change depending on how long the numbers are, as there are 15 character of spacing between entries
             # Enrollment_cap always starts at 21 
             match = re.match(r"""^ # Read from the very start to the very end(indicated by the $ at the end) of the string
@@ -611,6 +633,9 @@ class PDFParser:
                 self.state = "properties"
                 return
             
+            # If updating an already-existing entry, delete any pre-existing reserve capacities
+            if self.updating:
+                self.db_session.execute(delete(ClassReserveCapacity).where(ClassReserveCapacity.class_number == self.class_obj.class_number and ClassReserveCapacity.term == self.term))
             reserve_cap = ClassReserveCapacity(
                 class_number=self.class_obj.class_number,
                 term=self.term,
@@ -629,7 +654,8 @@ class PDFParser:
                 self.db_session.add_all(self.extras)
                 if self.course is not None:
                     self.db_session.add(self.course)
-                self.db_session.add(self.class_obj)
+                if not self.updating:
+                    self.db_session.add(self.class_obj)
                 logger.debug(f"Adding class {self.class_obj.course_id} - {self.class_obj.class_section} ({self.class_obj.class_number})")
                 return
             if len(line.strip()) > 0:
