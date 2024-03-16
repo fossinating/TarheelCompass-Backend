@@ -656,7 +656,7 @@ class PDFParser:
                     self.db_session.add(self.course)
                 if not self.updating:
                     self.db_session.add(self.class_obj)
-                logger.debug(f"Adding class {self.class_obj.course_id} - {self.class_obj.class_section} ({self.class_obj.class_number})")
+                logger.debug(f"{'Updating' if self.updating else 'Adding'} class {self.class_obj.course_id} - {self.class_obj.class_section} ({self.class_obj.class_number})")
                 return
             if len(line.strip()) > 0:
                 self.class_notes.append(line.strip)
