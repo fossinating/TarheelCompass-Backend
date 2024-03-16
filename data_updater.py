@@ -12,6 +12,7 @@ import requests as requests
 from bs4 import BeautifulSoup, NavigableString
 from sqlalchemy.orm import scoped_session
 from sqlalchemy import delete, select
+from sqlalchemy.exc import SQLAlchemyError
 from tqdm import tqdm
 from database import session_factory
 from models import ClassReserveCapacity, Course, Class, CourseAttribute, TermDataSource, TermData, ClassSchedule, ClassEnrollmentStamp
@@ -120,6 +121,10 @@ def process_course_catalog():
                     course_obj.last_updated_from = "catalog"
         except (Exception) as e:
             logger.error(f"Failed to process subject {subject}: {e}")
+            if e is SQLAlchemyError:
+                logger.error("Encountered a SQLAlchemy error, rolling back and skipping rest of processing")
+                db_session.rollback()
+                return
             errors += 1
             if errors >= 5:
                 logger.error("Failed 5 times, something critical must be wrong")
@@ -282,6 +287,10 @@ def process_class_search():
                 class_obj.last_updated_from = "search"
         except Exception as e:
             logger.error(f"Failed to read class: {e}")
+            if e is SQLAlchemyError:
+                logger.error("Encountered a SQLAlchemy error, rolling back and skipping rest of processing")
+                db_session.rollback()
+                return
             errors += 1
             if errors >= 5:
                 logger.error("Failed 5 times, something critical must be wrong")
@@ -402,6 +411,10 @@ class PDFParser:
                             self.parse_line(line)
                         except (Exception) as e:
                             logger.error(f"Failed to parse line with reason {e}\nLine:`{line}`")
+                            if e is SQLAlchemyError:
+                                logger.error("Encountered a SQLAlchemy error, rolling back and skipping rest of processing")
+                                self.db_session.rollback()
+                                return
                             self.errors += 1
                             self.reset_state()
                 
