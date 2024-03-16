@@ -240,3 +240,5 @@ cython_debug/
 ssb-collection/
 my_secrets.py
 /my_secrets.py
+*.pdf
+logs/

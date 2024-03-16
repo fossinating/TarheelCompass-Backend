@@ -1,6 +1,7 @@
 from models import ClassSchedule, Instructor
 from sqlalchemy.orm import scoped_session
 from database import session_factory
+import re
 
 
 def safe_cast(val, to_type, default=None):
@@ -36,10 +37,7 @@ def humanize_hour(hour):
     return f"{(hour - 1) % 12 + 1}{'pm' if hour >= 12 else 'am'}"
 
 
-def get_or_create_instructor(name, type=None, db_session=None):
-    if db_session is None:
-        db_session = scoped_session(session_factory)
-
+def get_or_create_instructor(db_session, name, type=None):
     if name == "":
         name = None
         
@@ -94,7 +92,7 @@ def split_and_translate_time(time):
         return [-2, -2]  # indicating an error
 
 
-def search_to_schedule(class_data, term):
+def search_to_schedule(db_session, class_data, term):
     class_number = safe_cast(class_data["class number"], int, -1)
 
     # possible schedule values:
@@ -106,7 +104,7 @@ def search_to_schedule(class_data, term):
         days = "TBA"
         start_time = -1
         end_time = -1
-        instructors = [get_or_create_instructor("TBA")]
+        instructors = [get_or_create_instructor(db_session, "TBA")]
     else:
         # convoluted code since T = Tu and TH = Th
         o_days = ["M", "T", "W", "TH", "F"]
@@ -126,10 +124,17 @@ def search_to_schedule(class_data, term):
         [start_time, end_time] = split_and_translate_time(
             class_data["schedule"][class_data["schedule"].find(" ") + 1:])
 
-        instructors = [get_or_create_instructor(class_data["primary instructor name(s)"])]
+        instructors = [get_or_create_instructor(db_session, class_data["primary instructor name(s)"])]
+
+    match = re.match(r"""^
+    (?P<building>.*)
+    -Rm\ 
+    (?P<room>.*)
+    $""", class_data["room"], re.VERBOSE)
 
     return ClassSchedule(
-        location=class_data["room"],
+        building=match.group("building") if match is not None else None,
+        room=match.group("room") if match is not None else None,
         class_number=class_number,
         days=days,
         start_time=start_time,

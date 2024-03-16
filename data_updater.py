@@ -7,20 +7,17 @@ import urllib.request
 import dotenv
 from discord_logger import DiscordLogger
 from os.path import exists
-
+import json
 import requests as requests
 from bs4 import BeautifulSoup, NavigableString
 from sqlalchemy.orm import scoped_session
 from sqlalchemy import delete, select
 from tqdm import tqdm
-
 from database import session_factory
 from models import ClassReserveCapacity, Course, Class, CourseAttribute, TermDataSource, TermData, ClassSchedule
-from utilities import search_to_schedule, get_or_create_instructor, safe_cast, standardize_term
-
+from utilities import search_to_schedule, get_or_create_instructor, safe_cast
 from pypdf import PdfReader
 import pathlib
-
 import logging
 
 formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
@@ -73,7 +70,7 @@ subjects = (
 def process_course_catalog():
     db_session = scoped_session(session_factory)
     add_queue = []
-    timestamp = datetime.datetime.utcnow()
+    timestamp = datetime.datetime.now()
     for subject in tqdm(subjects, position=0, leave=False, desc="Subjects"):
         response = requests.get(f"https://catalog.unc.edu/courses/{subject.lower()}/")
 
@@ -120,27 +117,62 @@ def process_course_catalog():
                 course_obj.last_updated_at = timestamp
                 course_obj.last_updated_from = "catalog"
     db_session.add_all(add_queue)
+    db_session.commit()
+    db_session.close()
 
 
-def process_course_search_for_terms(terms):
-    process_course_search_for_term(", ".join(terms))
+def standardize_term_from_class_search(raw_term):
+    return raw_term[5:].upper().replace(" ", "_") + "_" + raw_term[:4]
 
 
-# gets information about classes from the class search
-# (will not get information about any class without credit hours)
-def process_course_search_for_term(term):
+# Gets information about classes from the class search
+# Has meeting_dates which is not available from the pdf
+# Does not have any information about waitlist or total capacity of a class
+# Will not contain any information for any class without its own credit hours, such as physics labs or any recitations
+def process_class_search():
+    # TODO: detect the current semesters and automatically process for all of them
+
     db_session = scoped_session(session_factory)
+
+    # Detect current semesters available from this source
+
+    timestamp = datetime.datetime.now()
+    response = requests.get("https://reports.unc.edu/class-search/advanced_search/")
+
+    soup = BeautifulSoup(str(response.content).replace("\\n", "").replace("\\xc2\\xa0", " ").encode('utf-8').decode("unicode_escape"), "html.parser")
+
+    logger.info("Looking for current list of available schedules")
+
+    terms = []
+
+    for raw_term in json.loads(soup.select("#json_terms")[0].text):
+        term = standardize_term_from_class_search(raw_term)
+        term_data = db_session.scalar(select(TermData).filter_by(name=term))
+        if term_data is None:
+            logger.warning(f"Found a new term `{term}`, creating placeholder entry in term_data.")
+            db_session.add(TermData(name=term))
+
+        term_data_source = db_session.scalar(select(TermDataSource).filter_by(term_name=term, source="pdf"))
+        if term_data_source is None:
+            logger.warning(f"Found a new pdf term `{term}`, creating a new entry in term_data_source")
+            db_session.add(TermDataSource(source="pdf", term_name=term, raw_term_name=raw_term, last_seen=timestamp, last_updated=timestamp))
+        else:
+            term_data_source.last_seen = timestamp
+            term_data_source.last_updated = timestamp
+
+        terms.append(term)
+        
+
     response = requests.get("https://reports.unc.edu/class-search/advanced_search/", params={
-        "term": term,
+        "term": ", ".join(terms),
         "advanced": ", ".join(subjects)
     })
 
     missing_courses = []
     missing_classes = []
 
-    print("got a response")
+    logger.info("Got response for class search request")
     soup = BeautifulSoup(str(response.content).replace("\\n", ""), "html.parser")
-    timestamp = datetime.datetime.utcnow()
 
     rows = soup.select("#results-table > tbody > tr")
     static_class_data = {}
@@ -161,7 +193,7 @@ def process_course_search_for_term(term):
             db_session.add(Course(
                 code=course_id,
                 title=class_data["course description"],
-                description="Generated from section data",
+                description=None,
                 credits=class_data["credit hours"],
                 last_updated_at=timestamp,
                 last_updated_from="search"
@@ -169,14 +201,27 @@ def process_course_search_for_term(term):
 
         class_number = safe_cast(class_data["class number"], int, -1)
 
+        # weird quirk is that some classes will be listed twice in the class search if they have inconsistent schedules, for example certain language classes
+        # dont record a stamp if the class has already been recorded, since theoretically the info should already be saved
+        if (db_session.query(ClassEnrollmentStamp).filter_by(
+            class_number=class_number, term=standardize_term_from_class_search(class_data["term"]), 
+            timestamp=timestamp, source="search").first() is None):
+            db_session.add(ClassEnrollmentStamp(
+                    class_number=class_number,
+                    term=standardize_term(class_data["term"]),
+                    enrollment_total=-1 * safe_cast(class_data["available seats"], int, 1),
+                    timestamp=timestamp,
+                    source="search"
+            ))
+
         class_obj = db_session.query(Class).filter_by(
-            class_number=class_number, term=standardize_term(class_data["term"])).first()
+            class_number=class_number, term=standardize_term_from_class_search(class_data["term"])).first()
         if class_obj is None:
             if str(class_number) in missing_classes:
                 continue
             missing_classes.append(str(class_number))
 
-            schedule = search_to_schedule(class_data, standardize_term(class_data["term"]))
+            schedule = search_to_schedule(db_session, class_data, standardize_term_from_class_search(class_data["term"]))
             db_session.add(schedule)
 
             db_session.add(Class(
@@ -184,12 +229,12 @@ def process_course_search_for_term(term):
                 class_section=class_data["section number"],
                 class_number=class_number,
                 title=class_data["course description"],
-                term=standardize_term(class_data["term"]),
-                hours=safe_cast(class_data["credit hours"], float, -1.0),
+                term=standardize_term_from_class_search(class_data["term"]),
+                units=class_data["credit hours"],
                 meeting_dates=class_data["meeting dates"],
                 instruction_type=class_data["instruction mode"],
                 schedules=[schedule],
-                enrollment_total=-1 * safe_cast(class_data["available seats"], int, -1),
+                enrollment_total=-1 * safe_cast(class_data["available seats"], int, 1),
                 last_updated_at=timestamp,
                 last_updated_from="search"
             ))
@@ -198,7 +243,7 @@ def process_course_search_for_term(term):
             class_obj.meeting_dates = class_data["meeting dates"]
             # add/update the instruction type since this isn't scraped from the pdf
             class_obj.instruction_type = class_data["instruction mode"]
-            generated_schedule = search_to_schedule(class_data, standardize_term(class_data["term"]))
+            generated_schedule = search_to_schedule(db_session, class_data, standardize_term_from_class_search(class_data["term"]))
             found_match = False
             # search through all of the schedules to find a matching one
             for schedule in class_obj.schedules:
@@ -209,7 +254,7 @@ def process_course_search_for_term(term):
                     # if a match is found, check if the instructor is included
                     if class_data["primary instructor name(s)"] not in [instructor.name for instructor in schedule.instructors]:
                         # if instructor not included, add it
-                        schedule.instructors.append(get_or_create_instructor(class_data["primary instructor name(s)"]))
+                        schedule.instructors.append(get_or_create_instructor(db_session, class_data["primary instructor name(s)"]))
                     break
 
             # if a matching schedule not found, add the generated one
@@ -224,9 +269,11 @@ def process_course_search_for_term(term):
             # update last updated info
             class_obj.last_updated_at = timestamp
             class_obj.last_updated_from = "search"
+    
+    db_session.commit()
+    db_session.close()
 
-    print(f"Created entries for {len(missing_courses)} missing courses: " + ",".join(missing_courses))
-    print(f"Created entries for {len(missing_classes)} missing classes: " + ",".join(missing_classes))
+    logger.info(f"Created entries for {len(missing_courses)} missing courses: " + ",".join(missing_courses))
 
 
 pdf_split_line = "____________________________________________________________________________________________________________________________________________________________"
@@ -341,12 +388,15 @@ class PDFParser:
                             self.errors += 1
                             self.reset_state()
                             raise e
-
+                
+                logger.info(f"Created entries for {len(self.missing_courses)} missing courses: " + ",".join(self.missing_courses))
                 # Update the last_updated value
                 # This is done at the very end intentionally so that it won't get updated if we run into any issues
                 term_data_source.last_updated = self.source_datetime
                 self.db_session.commit()
                 self.db_session.close()
+            else:
+                os.remove(temp_filename)
         
     def parse_line(self, line: str):
         if self.state == "waiting":
@@ -414,7 +464,7 @@ class PDFParser:
             # If line starts with Class Enrl, add schedule, change state to enrollment, and process for same line
             if line.strip().startswith("Class Enrl"):
                 if self.instructor_type is not None:
-                    self.schedule.instructors.append(get_or_create_instructor(self.instructor_name, self.instructor_type, self.db_session))
+                    self.schedule.instructors.append(get_or_create_instructor(self.db_session, self.instructor_name, self.instructor_type))
                 self.instructor_name = None
                 self.instructor_type = None
                 self.class_obj.schedules.append(self.schedule)
@@ -424,7 +474,7 @@ class PDFParser:
             # If line starts with Bldg, add schedule, change state to schedule, and process for same line
             elif line.strip().startswith("Bldg"):
                 if self.instructor_type is not None:
-                    self.schedule.instructors.append(get_or_create_instructor(self.instructor_name, self.instructor_type, self.db_session))
+                    self.schedule.instructors.append(get_or_create_instructor(self.db_session, self.instructor_name, self.instructor_type))
                 self.instructor_name = None
                 self.instructor_type = None
                 self.class_obj.schedules.append(self.schedule)
@@ -450,7 +500,7 @@ class PDFParser:
                 else:
                     # When finding a new instructor, add the currently saved instructor data before saving more information
                     if self.instructor_type is not None:
-                        self.schedule.instructors.append(get_or_create_instructor(self.instructor_name, self.instructor_type, self.db_session))
+                        self.schedule.instructors.append(get_or_create_instructor(self.db_session, self.instructor_name, self.instructor_type))
                     self.instructor_name = match.group("name")
                     self.instructor_type = match.group("type")
                     return
@@ -505,6 +555,19 @@ class PDFParser:
             self.class_obj.waitlist_cap = int(match.group("class_waitlist_cap"))
             self.class_obj.waitlist_total = int(match.group("class_waitlist_tot"))
             self.class_obj.min_enrollment = int(match.group("class_min_enrollment"))
+
+            self.db_session.add(ClassEnrollmentStamp(
+                    class_number=self.class_obj.enrollment_cap,
+                    term=term,
+                    enrollment_cap=class_data["enrollment_cap"],
+                    enrollment_total=self.class_obj.enrollment_total,
+                    waitlist_cap=self.class_obj.waitlist_cap,
+                    waitlist_total=self.class_obj.waitlist_total,
+                    min_enrollment=self.class_obj.min_enrollment,
+                    timestamp=generated_time,
+                    source="pdf"
+                ))
+
             self.state = "waiting_for_properties"
             return
         if self.state == "waiting_for_properties":
@@ -595,10 +658,9 @@ if __name__ == "__main__":
     from database import init_db
     init_db()
 
-    # TODO: Add the rest of the processing
     # TODO: Connect to a temporary database at first, then move everything over to the live database once all processing is done and successful
-    # TODO: Print out the total number of generated course entries in pdf and search processing
-    # FIXME: For some ungodly reason, some classes have their instructors listed on multiple lines under the same entry. This should not ever happen, however it does, and I need to find a way to handle it.
-        # Example class is GERM 102-003(2593)
-        # Potential options include detecting that theres a shit ton of spaces and then reading it as a continuation? This would require me to go back and add to an already-entered instructor but that's okay
-    process_pdfs()
+    #process_course_catalog()
+
+    #process_pdfs()
+
+    process_class_search()
