@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup, NavigableString
 from sqlalchemy.orm import scoped_session
 from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
+from psycopg2.errors import Error as PSQLError
 from tqdm import tqdm
 from database import session_factory
 from models import ClassReserveCapacity, Course, Class, CourseAttribute, TermDataSource, TermData, ClassSchedule, ClassEnrollmentStamp
@@ -121,7 +122,7 @@ def process_course_catalog():
                     course_obj.last_updated_from = "catalog"
         except (Exception) as e:
             logger.error(f"Failed to process subject {subject}: {e}")
-            if e is SQLAlchemyError:
+            if e is SQLAlchemyError or e is PSQLError:
                 logger.error("Encountered a SQLAlchemy error, rolling back and skipping rest of processing")
                 db_session.rollback()
                 return
@@ -287,7 +288,7 @@ def process_class_search():
                 class_obj.last_updated_from = "search"
         except Exception as e:
             logger.error(f"Failed to read class: {e}")
-            if e is SQLAlchemyError:
+            if e is SQLAlchemyError or e is PSQLError:
                 logger.error("Encountered a SQLAlchemy error, rolling back and skipping rest of processing")
                 db_session.rollback()
                 return
@@ -411,7 +412,7 @@ class PDFParser:
                             self.parse_line(line)
                         except (Exception) as e:
                             logger.error(f"Failed to parse line with reason {e}\nLine:`{line}`")
-                            if e is SQLAlchemyError:
+                            if e is SQLAlchemyError or e is PSQLError:
                                 logger.error("Encountered a SQLAlchemy error, rolling back and skipping rest of processing")
                                 self.db_session.rollback()
                                 return
@@ -608,7 +609,7 @@ class PDFParser:
             self.class_obj.min_enrollment = int(match.group("class_min_enrollment"))
 
             self.db_session.add(ClassEnrollmentStamp(
-                    class_number=self.class_obj.enrollment_cap,
+                    class_number=self.class_obj.class_number,
                     term=self.term,
                     enrollment_cap=self.class_obj.enrollment_cap,
                     enrollment_total=self.class_obj.enrollment_total,
