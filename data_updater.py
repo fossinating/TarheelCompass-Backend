@@ -366,11 +366,6 @@ class PDFParser:
         source_reader = PdfReader(temp_filename)
         page_one = source_reader.pages[0].extract_text(extraction_mode="layout")
 
-        logger.debug(
-            page_one[page_one.index("Run Date: ")+11:page_one.index("Run Date: ")+21] + 
-            " " + 
-            page_one[page_one.index("Run Time: ")+11:page_one.index("Run Time: ")+19])
-
         self.source_datetime = datetime.datetime.strptime(
             page_one[page_one.index("Run Date: ")+11:page_one.index("Run Date: ")+21] + 
             " " + 
@@ -678,7 +673,7 @@ class PDFParser:
 
 # Read through the directory of class listings
 def process_pdfs(force=False):
-    logger.debug("Getting directory of pdfs")
+    logger.info("Getting directory of pdfs")
 
     response = requests.get("https://registrar.unc.edu/courses/schedule-of-classes/directory-of-classes-2/")
 

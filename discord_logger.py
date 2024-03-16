@@ -21,7 +21,6 @@ class DiscordLogger():
         self.logger.setLevel(logging.DEBUG)
 
     def send_message(self, level, msg, color):
-        return # I don't want to actually send messages for now since I'm doing local testing
         webhook = DiscordWebhook(url=self.url, username=self.name, content=role_pings[level])
         embed = DiscordEmbed(title=level, description=msg, color=color)
         embed.set_timestamp()
@@ -38,9 +37,10 @@ class DiscordLogger():
         self.try_debug()
         self.send_message("SUCCESS", msg, "7dff7f")
 
-    def debug(self, msg):
+    def debug(self, msg, send_discord=False):
         self.logger.debug(msg)
-        self.debug_lines.append(str(msg))
+        if send_discord:
+            self.debug_lines.append(str(msg))
 
     def info(self, msg):
         self.logger.info(msg)
