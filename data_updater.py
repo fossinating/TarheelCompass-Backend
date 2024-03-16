@@ -33,7 +33,7 @@ logger = DiscordLogger(os.getenv("DISCORD_WEBHOOK_URL"), "Tarheel Compass Data",
 
 logger.logger.addHandler(debug_handler)
 logging.getLogger("sqlalchemy.engine").addHandler(debug_handler)
-logging.getLogger("sqlalchemy.engine").setLevel(logging.DEBUG)
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 def get_root_text(html_element):
     if isinstance(html_element, NavigableString):
@@ -580,7 +580,7 @@ class PDFParser:
                     waitlist_cap=self.class_obj.waitlist_cap,
                     waitlist_total=self.class_obj.waitlist_total,
                     min_enrollment=self.class_obj.min_enrollment,
-                    timestamp=self.source_timestamp,
+                    timestamp=self.source_datetime,
                     source="pdf"
                 ))
 
