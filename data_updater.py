@@ -21,6 +21,7 @@ from utilities import search_to_schedule, get_or_create_instructor, safe_cast
 from pypdf import PdfReader
 import pathlib
 import logging
+import time
 
 formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
 
@@ -705,13 +706,33 @@ def process_pdfs(force=False):
         parser.parse(force=force)
 
 
+def time_string(seconds):
+    return \
+        (str(math.floor(seconds / 60 / 60)) + " hours, " if seconds > 60*60 else "") +\
+        (str(math.floor(seconds / 60 % 60)) + " minutes, " if seconds > 60 else "") +\
+        (str(math.floor(seconds % 60))) + " seconds"
+        
+
+
 if __name__ == "__main__":
     from database import init_db
     init_db()
 
-    # TODO: Connect to a temporary database at first, then move everything over to the live database once all processing is done and successful
+    all_start = time.time()
+    sub_start = time.time()
+
     process_course_catalog()
+
+    logger.info("Finished processing course catalog in " + time_string(time.time() - sub_start))
+    sub_start = time.time()
 
     process_pdfs()
 
+    logger.info("Finished processing semester section books in " + time_string(time.time() - sub_start))
+    sub_start = time.time()
+
     process_class_search()
+
+    all_elapsed = time.time() - all_start
+    logger.info("Finished processing class search in " + time_string(time.time() - sub_start))
+    logger.info("Finished processing everything in " + time_string(time.time() - sub_start))
