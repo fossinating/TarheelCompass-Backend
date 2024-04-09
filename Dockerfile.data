@@ -11,8 +11,8 @@ RUN python -m venv /opt/venv
 # Activate the virtual environment
 ENV PATH="/opt/venv/bin:/$PATH"
 
-COPY data-requirements.txt .
-RUN pip install -r data-requirements.txt
+COPY data_requirements.txt .
+RUN pip install -r data_requirements.txt
 
 # Operational stage
 FROM python:3.12.2-alpine
@@ -33,6 +33,7 @@ COPY data_updater.py /code
 COPY database.py /code
 COPY models.py /code
 COPY utilities.py /code
+COPY discord_logger.py /code
 
 
-CMD ["/bin/bash", "-c", "cd code;python data_updater.py"]
+CMD ["/bin/sh", "-c", "cd /code && python data_updater.py"]
