@@ -146,7 +146,6 @@ def standardize_term_from_class_search(raw_term):
 # Does not have any information about waitlist or total capacity of a class
 # Will not contain any information for any class without its own credit hours, such as physics labs or any recitations
 def process_class_search():
-    # TODO: detect the current semesters and automatically process for all of them
 
     db_session = scoped_session(session_factory)
 
@@ -718,6 +717,8 @@ if __name__ == "__main__":
     from database import init_db
     init_db()
 
+    logger.info("Starting data update protocol")
+
     all_start = time.time()
     sub_start = time.time()
 
@@ -735,4 +736,4 @@ if __name__ == "__main__":
 
     all_elapsed = time.time() - all_start
     logger.info("Finished processing class search in " + time_string(time.time() - sub_start))
-    logger.info("Finished processing everything in " + time_string(time.time() - sub_start))
+    logger.info("Finished processing everything in " + time_string(time.time() - all_start))

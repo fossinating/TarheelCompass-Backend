@@ -1,0 +1,38 @@
+# Stolen from https://wbarillon.medium.com/docker-python-image-with-psycopg2-installed-c10afa228016
+# Builder stage
+FROM python:3.12.2-alpine AS builder
+
+# musl-dev is a "general" C compiler necessary, from what I understood
+RUN apk update && \
+    apk add musl-dev libpq-dev gcc
+
+# Create the virtual environment
+RUN python -m venv /opt/venv
+# Activate the virtual environment
+ENV PATH="/opt/venv/bin:/$PATH"
+
+COPY data-requirements.txt .
+RUN pip install -r data-requirements.txt
+
+# Operational stage
+FROM python:3.12.2-alpine
+
+RUN apk update && \
+    apk add libpq-dev
+
+# Get the virtual environment from builder stage
+COPY --from=builder /opt/venv /opt/venv
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /code
+
+COPY data_updater.py /code
+COPY database.py /code
+COPY models.py /code
+COPY utilities.py /code
+
+
+CMD ["/bin/bash", "-c", "cd code;python data_updater.py"]
