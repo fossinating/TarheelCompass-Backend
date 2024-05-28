@@ -10,6 +10,7 @@ from models import Class as ClassModel
 from models import ClassSchedule as ClassScheduleModel
 from models import CourseAttribute as CourseAttributeModel
 from models import Course as CourseModel
+from models import ClassReserveCapacity as ClassReserveCapacityModel
 
 import strawberry
 from strawberry.extensions import Extension
@@ -43,24 +44,28 @@ class Class:
     class_section: str
     class_number: int
     title: str
-    component: str
-    topics: str
+    component: typing.Optional[str]
+    topics: typing.Optional[str]
     term: str
-    hours: float
-    meeting_dates: str
+    units: str
+    meeting_dates: typing.Optional[str]
     instruction_type: str
 
     @strawberry.field
     def schedules(self) -> typing.List["ClassSchedule"]:
         return [ClassSchedule.from_instance(schedule) for schedule in self.instance.schedules]
 
-    enrollment_cap: int
+    enrollment_cap: typing.Optional[int]
     enrollment_total: int
-    waitlist_cap: int
-    waitlist_total: int
-    min_enrollment: int
+    waitlist_cap: typing.Optional[int]
+    waitlist_total: typing.Optional[int]
+    min_enrollment: typing.Optional[int]
     combined_section_id: str
     equivalents: str
+
+    @strawberry.field
+    def reserve_capacities(self) -> typing.List["ClassReserveCapacity"]:
+        return [ClassReserveCapacity.from_instance(reserve_capacity) for reserve_capacity in self.instance.reserve_capacities]
     last_updated_at: datetime.datetime
     last_updated_from: str
 
@@ -74,7 +79,7 @@ class Class:
             component=instance.component,
             topics=instance.topics,
             term=instance.term,
-            hours=instance.hours,
+            units=instance.units,
             meeting_dates=instance.meeting_dates,
             instruction_type=instance.instruction_type,
             enrollment_cap=instance.enrollment_cap,
@@ -92,15 +97,16 @@ class Class:
 @strawberry.type
 class ClassSchedule:
     instance: strawberry.Private[ClassScheduleModel]
-    location: str
+    building: typing.Optional[str]
+    room: typing.Optional[str]
 
     @strawberry.field
     def instructors(self) -> typing.List["Instructor"]:
         return [Instructor.from_instance(instructor) for instructor in self.instance.instructors]
 
     days: str
-    start_time: int
-    end_time: int
+    start_time: typing.Optional[int]
+    end_time: typing.Optional[int]
 
     @classmethod
     def from_instance(cls, instance: ClassScheduleModel):
@@ -134,7 +140,7 @@ class Course:
     code: str
     title: str
     credits: str
-    description: str
+    description: typing.Optional[str]
 
     @strawberry.field
     def attrs(self) -> typing.List["CourseAttribute"]:
@@ -154,6 +160,27 @@ class Course:
             last_updated_at=instance.last_updated_at,
             last_updated_from=instance.last_updated_from,
         )
+
+
+@strawberry.type
+class ClassReserveCapacity:
+    instance: strawberry.Private[ClassReserveCapacityModel]
+
+    expire_date: datetime.datetime
+    description: str
+    enroll_cap: int
+    enroll_total: int
+
+    @classmethod
+    def from_instance(cls, instance: ClassReserveCapacityModel):
+        return cls(
+            instance=instance,
+            expire_date=instance.expire_date,
+            description=instance.description,
+            enroll_cap=instance.enroll_cap,
+            enroll_total=instance.enroll_total
+        )
+
 
 
 # hardcoding the query limit for now, if the service is performing well enough
