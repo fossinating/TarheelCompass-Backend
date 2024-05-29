@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres
+    restart: always
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_DB=${DB_DATABASE_NAME}
+  nginx:
+    image: nginx
+    restart: always
+    ports:
+      - "8080:80"
+      - "80:80"
+      - "443:443"
+    links:
+      - backend
+    volumes:
+      - ./data/nginx:/etc/nginx
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+  backend:
+    image: tarheel-compass-server
+    restart: always
+    env_file:
+      - path: .env
+        required: true
+    links:
+      - db
+  data:
+    image: tarheel-compass-data
+    restart: on-failure:3
+    env_file:
+      - path: .env
+        required: true
+    links:
+      - db

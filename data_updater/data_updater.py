@@ -26,6 +26,8 @@ import time
 formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
 
 from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
+Path((pathlib.Path(__file__).parent / "logs")).mkdir(parents=True, exist_ok=True)
 debug_handler = TimedRotatingFileHandler((pathlib.Path(__file__).parent / "logs" / "debug.log").resolve(), when="midnight", backupCount=14)
 debug_handler.suffix = "%Y%m%d"
 debug_handler.setLevel(logging.DEBUG)
