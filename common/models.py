@@ -176,6 +176,8 @@ class TermData(Base):
     name: Mapped[str] = mapped_column(String(20), unique=True)
     confirmed: Mapped[Boolean] = mapped_column(Boolean, default=False)
     id: Mapped[int] = mapped_column(Integer, autoincrement=True, primary_key=True)
+    default: Mapped[Boolean] = mapped_column(Boolean, default=False)
+    priority: Mapped[int] = mapped_column(Integer, autoincrement=True)
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
 
