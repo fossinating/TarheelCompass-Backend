@@ -21,4 +21,4 @@ WORKDIR /code
 COPY server/ /code/server/
 COPY common/ /code/common/
 
-CMD ["fastapi", "run", "code/server/app.py", "--port", "80"]
+ENTRYPOINT ["fastapi", "run", "code/server/app.py", "--port", "80"]
