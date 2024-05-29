@@ -4,7 +4,7 @@ from sqlalchemy import Table, Float, DateTime, Column, Integer, \
     String, ForeignKey, Text, ForeignKeyConstraint, UniqueConstraint, Boolean
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 
-from database import Base
+from common.database import Base
 
 schedule_instructor_join_table = Table("schedule_instructor_join_table",
                                        Base.metadata,

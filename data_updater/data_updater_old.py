@@ -10,8 +10,8 @@ from sqlalchemy.orm import scoped_session
 from tika import parser
 from tqdm import tqdm
 
-from database import session_factory
-from models import Course, Class, ClassSchedule, Instructor, CourseAttribute
+from common.database import session_factory
+from common.models import Course, Class, ClassSchedule, Instructor, CourseAttribute
 from utilities import search_to_schedule, get_or_create_instructor, safe_cast, standardize_term, split_and_translate_time
 
 db_session = scoped_session(session_factory)
@@ -467,7 +467,7 @@ def process_course_catalog():
 
 
 def update_unc_data():
-    from database import init_db
+    from common.database import init_db
     init_db()
 
     #process_course_catalog()

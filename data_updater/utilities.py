@@ -1,6 +1,6 @@
-from models import ClassSchedule, Instructor
+from common.models import ClassSchedule, Instructor
 from sqlalchemy.orm import scoped_session
-from database import session_factory
+from common.database import session_factory
 import re
 
 

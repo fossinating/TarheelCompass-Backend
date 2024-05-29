@@ -5,7 +5,7 @@ import os
 import re
 import urllib.request
 import dotenv
-from discord_logger import DiscordLogger
+from common.discord_logger import DiscordLogger
 from os.path import exists
 import json
 import requests as requests
@@ -15,8 +15,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from psycopg2.errors import Error as PSQLError
 from tqdm import tqdm
-from database import session_factory
-from models import ClassReserveCapacity, Course, Class, CourseAttribute, TermDataSource, TermData, ClassSchedule, ClassEnrollmentStamp
+from common.database import session_factory
+from common.models import ClassReserveCapacity, Course, Class, CourseAttribute, TermDataSource, TermData, ClassSchedule, ClassEnrollmentStamp
 from utilities import search_to_schedule, get_or_create_instructor, safe_cast
 from pypdf import PdfReader
 import pathlib
@@ -714,7 +714,7 @@ def time_string(seconds):
 
 
 if __name__ == "__main__":
-    from database import init_db
+    from common.database import init_db
     init_db()
 
     logger.info("Starting data update protocol")

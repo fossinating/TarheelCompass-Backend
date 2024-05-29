@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from database import init_db
+from common.database import init_db
 from schema import schema
 from strawberry.fastapi import GraphQLRouter
 

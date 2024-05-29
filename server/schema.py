@@ -4,13 +4,13 @@ import typing
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from database import session_factory
-from models import Instructor as InstructorModel
-from models import Class as ClassModel
-from models import ClassSchedule as ClassScheduleModel
-from models import CourseAttribute as CourseAttributeModel
-from models import Course as CourseModel
-from models import ClassReserveCapacity as ClassReserveCapacityModel
+from common.database import session_factory
+from common.models import Instructor as InstructorModel
+from common.models import Class as ClassModel
+from common.models import ClassSchedule as ClassScheduleModel
+from common.models import CourseAttribute as CourseAttributeModel
+from common.models import Course as CourseModel
+from common.models import ClassReserveCapacity as ClassReserveCapacityModel
 
 import strawberry
 from strawberry.extensions import Extension
