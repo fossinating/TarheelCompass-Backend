@@ -1,7 +1,7 @@
 FROM common as builder
 
-COPY data_updater/requirements.txt ./data_requirements.txt
-RUN pip install -r data_requirements.txt
+COPY server/requirements.txt ./server_requirements.txt
+RUN pip install -r server_requirements.txt
 
 # Operational stage
 FROM python:3.12.2-alpine
@@ -18,8 +18,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /code
 
-COPY data_updater/ /code/data_updater/
+COPY server/ /code/server/
 COPY common/ /code/common/
 
-
-CMD ["/bin/sh", "-c", "cd /code && python data_updater/data_updater.py"]
+CMD ["fastapi", "run", "code/server/app.py", "--port", "80"]
