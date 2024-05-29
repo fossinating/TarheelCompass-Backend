@@ -26,11 +26,12 @@ target "data-dev" {
 target "data-staging" {
   inherits = ["data-dev"]
   platforms = ["linux/arm/v7", "linux/arm64/v8", "linux/amd64"]
-  tags = ["ghcr.io/fossinating/tarheel-compass-data"]
+  tags = ["ghcr.io/fossinating/tarheel-compass-data:staging"]
 }
 
 target "data-release" {
   inherits = ["data-staging"]
+  tags = ["ghcr.io/fossinating/tarheel-compass-data:latest"]
 }
 
 target "server-dev" {
@@ -44,9 +45,10 @@ target "server-dev" {
 target "server-staging" {
   inherits = ["server-dev"]
   platforms = ["linux/arm/v7", "linux/arm64/v8", "linux/amd64"]
-  tags = ["ghcr.io/fossinating/tarheel-compass-server"]
+  tags = ["ghcr.io/fossinating/tarheel-compass-server:staging"]
 }
 
 target "server-release" {
   inherits = ["server-staging"]
+  tags = ["ghcr.io/fossinating/tarheel-compass-server:latest"]
 }
