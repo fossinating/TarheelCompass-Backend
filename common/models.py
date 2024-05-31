@@ -166,19 +166,22 @@ class TermDataSource(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     source: Mapped[str] = mapped_column(String(10))
     raw_term_name: Mapped[str] = mapped_column(String(20))
-    term_name: Mapped[str] = mapped_column(String(20))
+    term_name: Mapped[str] = mapped_column(String(20), ForeignKey("term.name"))
     last_updated: Mapped[Optional[DateTime]] = mapped_column(DateTime)
     last_seen: Mapped[DateTime] = mapped_column(DateTime)
+    term_data_reference: Mapped["TermData"] = relationship("TermData",
+                                                    back_populates="sources")
 
 
 class TermData(Base):
     __tablename__ = "term"
     name: Mapped[str] = mapped_column(String(20), unique=True)
-    confirmed: Mapped[Boolean] = mapped_column(Boolean, default=False)
+    active: Mapped[Boolean] = mapped_column(Boolean, default=False)
     id: Mapped[int] = mapped_column(Integer, autoincrement=True, primary_key=True)
     default: Mapped[Boolean] = mapped_column(Boolean, default=False)
     priority: Mapped[int] = mapped_column(Integer, autoincrement=True)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    sources: Mapped[List["TermDataSource"]] = relationship("TermDataSource", cascade="all, delete", passive_deletes=True)
 
 
 class ClassEnrollmentStamp(Base):
