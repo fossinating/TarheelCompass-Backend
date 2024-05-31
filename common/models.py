@@ -183,7 +183,7 @@ class TermData(Base):
     # These will be unused for the time being but are included in the model because I see a future where they may be useful
     active: Mapped[Boolean] = mapped_column(Boolean, default=False)
     default: Mapped[Boolean] = mapped_column(Boolean, default=False)
-    priority: Mapped[int] = mapped_column(Integer, autoincrement=True)
+    priority: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class ClassEnrollmentStamp(Base):
