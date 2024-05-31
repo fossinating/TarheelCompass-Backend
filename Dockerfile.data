@@ -1,0 +1,25 @@
+FROM common as builder
+
+COPY data_updater/requirements.txt ./data_requirements.txt
+RUN pip install -r data_requirements.txt
+
+# Operational stage
+FROM python:3.12.2-alpine
+
+RUN apk update && \
+    apk add libpq-dev
+
+# Get the virtual environment from builder stage
+COPY --from=builder /opt/venv /opt/venv
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /code
+
+COPY data_updater/ /code/
+COPY common/ /code/common/
+
+
+CMD ["/bin/sh", "-c", "cd /code && python data_updater.py"]

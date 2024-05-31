@@ -1,0 +1,24 @@
+FROM common as builder
+
+COPY server/requirements.txt ./server_requirements.txt
+RUN pip install -r server_requirements.txt
+
+# Operational stage
+FROM python:3.12.2-alpine
+
+RUN apk update && \
+    apk add libpq-dev
+
+# Get the virtual environment from builder stage
+COPY --from=builder /opt/venv /opt/venv
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /code
+
+COPY server/ /code/
+COPY common/ /code/common/
+
+CMD fastapi run app.py --port 80
