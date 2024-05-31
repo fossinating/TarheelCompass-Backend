@@ -228,6 +228,7 @@ class Query:
         if instruction_type is not None:
             statement = statement.where(ClassModel.instruction_type == instruction_type)
         if attrs is not None:
+            # TODO: Change to match all attrs
             statement = statement.where(ClassModel.attributes.any(CourseAttributeModel.value.in_(attrs)))
         if instructor is not None:
             statement = statement.where(ClassModel.schedules.any(
@@ -240,6 +241,7 @@ class Query:
                 if day not in days:
                     string_search += f"%{day}%"
 
+            # TODO: change it to where it returns any class where all the schedules match exactly
             # built a string along the like of "%M%%W%" for a filter allowing Tu, Th, F
             # filter for classes where there is not a schedule that fits the inverted filter
             statement = statement.where(~ClassModel.schedules.any(
