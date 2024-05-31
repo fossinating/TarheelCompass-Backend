@@ -4,11 +4,11 @@ from discord_webhook import DiscordWebhook, DiscordEmbed
 import logging
 
 role_pings = {
-    "ERROR": "<@&1000286888554414090>",
-    "WARNING": "<@&1000286850122006598>",
-    "INFO": "<@&1000286794903990353>",
+    "ERROR": "<@&1246049260303024148>",
+    "WARNING": "<@&1246049307539275918>",
+    "INFO": "<@&1246049332675870780>",
     "DEBUG": "",
-    "SUCCESS": "<@&1000286746136821780>",
+    "SUCCESS": "<@&1246049390351745035>",
 }
 
 
