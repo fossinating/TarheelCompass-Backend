@@ -20,7 +20,7 @@ from strawberry.extensions import Extension
 class Instructor:
     instance: strawberry.Private[InstructorModel]
     id: int
-    instructor_type: str
+    instructor_type: typing.Optional[str]
     name: str
 
     @classmethod
@@ -201,6 +201,7 @@ class Query:
     @strawberry.field(name="classes")
     def classes(self, info,
                 term: str,
+                class_numbers: typing.Optional[typing.List[int]] = None,
                 course_id: typing.Optional[str] = None,
                 title: typing.Optional[str] = None,
                 class_section: typing.Optional[str] = None,
@@ -214,6 +215,8 @@ class Query:
         db: Session = info.context["db"]
         statement = select(ClassModel).where(ClassModel.term == term).\
             limit(query_limit).order_by(ClassModel.course_id, ClassModel.class_section)
+        if class_numbers is not None:
+            statement = statement.where(ClassModel.class_number.in_(class_numbers))
         if course_id is not None:
             statement = statement.where(ClassModel.course_id.ilike(f"%{course_id}%"))
         if title is not None:
@@ -225,6 +228,7 @@ class Query:
         if instruction_type is not None:
             statement = statement.where(ClassModel.instruction_type == instruction_type)
         if attrs is not None:
+            # TODO: Change to match all attrs
             statement = statement.where(ClassModel.attributes.any(CourseAttributeModel.value.in_(attrs)))
         if instructor is not None:
             statement = statement.where(ClassModel.schedules.any(
@@ -237,6 +241,7 @@ class Query:
                 if day not in days:
                     string_search += f"%{day}%"
 
+            # TODO: change it to where it returns any class where all the schedules match exactly
             # built a string along the like of "%M%%W%" for a filter allowing Tu, Th, F
             # filter for classes where there is not a schedule that fits the inverted filter
             statement = statement.where(~ClassModel.schedules.any(

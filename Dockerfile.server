@@ -18,7 +18,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /code
 
-COPY server/ /code/server/
+COPY server/ /code/
 COPY common/ /code/common/
 
-CMD ["fastapi", "run", "code/server/app.py", "--port", "80"]
+CMD fastapi run app.py --port 80

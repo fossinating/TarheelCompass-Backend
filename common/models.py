@@ -166,17 +166,24 @@ class TermDataSource(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     source: Mapped[str] = mapped_column(String(10))
     raw_term_name: Mapped[str] = mapped_column(String(20))
-    term_name: Mapped[str] = mapped_column(String(20))
+    term_name: Mapped[str] = mapped_column(String(20), ForeignKey("term.name"))
     last_updated: Mapped[Optional[DateTime]] = mapped_column(DateTime)
     last_seen: Mapped[DateTime] = mapped_column(DateTime)
+    term_data_reference: Mapped["TermData"] = relationship("TermData",
+                                                    back_populates="sources")
 
 
 class TermData(Base):
     __tablename__ = "term"
     name: Mapped[str] = mapped_column(String(20), unique=True)
-    confirmed: Mapped[Boolean] = mapped_column(Boolean, default=False)
     id: Mapped[int] = mapped_column(Integer, autoincrement=True, primary_key=True)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    sources: Mapped[List["TermDataSource"]] = relationship("TermDataSource", cascade="all, delete", passive_deletes=True)
+
+    # These will be unused for the time being but are included in the model because I see a future where they may be useful
+    active: Mapped[Boolean] = mapped_column(Boolean, default=False)
+    default: Mapped[Boolean] = mapped_column(Boolean, default=False)
+    priority: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class ClassEnrollmentStamp(Base):
@@ -202,72 +209,3 @@ class ClassReserveCapacity(Base):
     __table_args__ = (ForeignKeyConstraint((class_number, term), (Class.class_number, Class.term), ondelete="CASCADE"), {})
     class_reference: Mapped["Class"] = relationship("Class",
                                                     back_populates="reserve_capacities")
-
-'''
-
-class RolesUsers(Base):
-    __tablename__ = 'roles_users'
-    id = Column(Integer(), primary_key=True)
-    user_id = Column('user_id', UUID(as_uuid=True), ForeignKey('user.id'))
-    role_id = Column('role_id', Integer(), ForeignKey('role.id'))
-
-
-class Role(Base, RoleMixin):
-    __tablename__ = 'role'
-    id = Column(Integer(), primary_key=True)
-    name = Column(String(80), unique=True)
-    description = Column(String(255))
-
-
-class User(Base, UserMixin):
-    __tablename__ = 'user'
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String(255), unique=True)
-    username = Column(String(255), unique=True, nullable=True)
-    password = Column(String(255), nullable=False)
-    last_login_at = Column(DateTime())
-    current_login_at = Column(DateTime())
-    last_login_ip = Column(String(100))
-    current_login_ip = Column(String(100))
-    login_count = Column(Integer)
-    active = Column(Boolean())
-    fs_uniquifier = Column(String(255), unique=True, nullable=False)
-    confirmed_at = Column(DateTime())
-    roles = relationship('Role', secondary='roles_users',
-                         backref=backref('users', lazy='dynamic'))
-    schedules = relationship('UserSchedule', foreign_keys='[UserSchedule.user_id]')
-    active_schedule_id = Column(ForeignKey("user_schedule.id"))
-
-    def to_json(self):
-        return {
-            "active_schedule_id": self.active_schedule_id,
-            "schedules": {str(schedule.id): schedule.to_json() for schedule in self.schedules}
-        }
-
-
-# join table
-class ClassUserSchedule(Base):
-    __tablename__ = "class_user_schedule"
-    entry_id = Column(Integer, primary_key=True)
-    user_schedule_id = Column(ForeignKey("user_schedule.id"))
-    class_number = Column(Integer)
-    term = Column(String(8))
-    __table_args__ = (ForeignKeyConstraint((class_number, term), (Class.class_number, Class.term)), {})
-
-
-class UserSchedule(Base):
-    __tablename__ = "user_schedule"
-    id = Column(UUID(as_uuid=True), primary_key=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("user.id"))
-    display_name = Column(String(30))
-    term = Column(String(8))
-    classes = relationship("Class", secondary="class_user_schedule")
-
-    def to_json(self):
-        return {
-            "id": self.id,
-            "displayName": self.display_name,
-            "term": self.term,
-            "classNumbers": [class_obj.class_number for class_obj in self.classes]
-        }
-'''
