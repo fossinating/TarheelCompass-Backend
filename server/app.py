@@ -41,7 +41,7 @@ db_session = session_factory()
 
 @app.get("/terms")
 async def terms():
-    stmt = select(TermData).where(TermData.sources.any_(TermDataSource.last_seen < (datetime.datetime.now() + datetime.timedelta(days=7))))
+    stmt = select(TermData).where(TermData.sources.any(TermDataSource.last_seen < (datetime.datetime.now() + datetime.timedelta(days=7))))
     result = db_session.execute(stmt)
 
     return [{"name": term.name, "id": term.id} for term in result.scalars()]
