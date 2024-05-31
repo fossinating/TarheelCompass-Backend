@@ -7,6 +7,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'docker-bake.hcl'
+      - 'Dockerfile.**'
+      - 'data_updater/**'
+      - 'common/**'
+      - 'server/**'
 #
 jobs:
   # This pushes the image to GitHub Packages.
