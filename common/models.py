@@ -176,12 +176,14 @@ class TermDataSource(Base):
 class TermData(Base):
     __tablename__ = "term"
     name: Mapped[str] = mapped_column(String(20), unique=True)
-    active: Mapped[Boolean] = mapped_column(Boolean, default=False)
     id: Mapped[int] = mapped_column(Integer, autoincrement=True, primary_key=True)
-    default: Mapped[Boolean] = mapped_column(Boolean, default=False)
-    priority: Mapped[int] = mapped_column(Integer, autoincrement=True)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     sources: Mapped[List["TermDataSource"]] = relationship("TermDataSource", cascade="all, delete", passive_deletes=True)
+
+    # These will be unused for the time being but are included in the model because I see a future where they may be useful
+    active: Mapped[Boolean] = mapped_column(Boolean, default=False)
+    default: Mapped[Boolean] = mapped_column(Boolean, default=False)
+    priority: Mapped[int] = mapped_column(Integer, autoincrement=True)
 
 
 class ClassEnrollmentStamp(Base):
