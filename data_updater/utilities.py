@@ -55,23 +55,6 @@ def get_or_create_instructor(db_session, name, type=None):
     return instructor
 
 
-# TODO: Figure out if this is still used at all and if so work to remove it
-def standardize_term(term):
-    return ""
-    data = {
-        "Fall 2022": "FALL2022",
-        "2022 Fall": "FALL2022",
-        "2229": "FALL2022",
-        "2232": "SPRI2023",
-        "Spring 2023": "SPRI2023",
-        "2023 Spring": "SPRI2023",
-        "Fall 2023": "FALL2023",
-        "2023 Fall": "FALL2023",
-        "2239": "FALL2023"
-    }
-    return data[term]
-
-
 # translates to 24hr
 def translate_time(src_time):
     nums = src_time.strip().split(" ")[0].split(":")
