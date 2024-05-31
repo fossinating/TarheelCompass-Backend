@@ -55,6 +55,7 @@ def get_or_create_instructor(db_session, name, type=None):
     return instructor
 
 
+# TODO: Figure out if this is still used at all and if so work to remove it
 def standardize_term(term):
     return ""
     data = {
