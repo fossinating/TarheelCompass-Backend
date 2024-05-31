@@ -1,13 +1,14 @@
+version: '3.9'
 services:
   db:
     image: postgres
     restart: always
-    volumes:
-      - ./data/postgres:/var/lib/postgresql/data
     environment:
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_USER=${DB_USERNAME}
       - POSTGRES_DB=${DB_DATABASE_NAME}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
   nginx:
     image: nginx
     restart: always
@@ -37,3 +38,10 @@ services:
         required: true
     links:
       - db
+  certbot:
+    image: certbot/certbot
+    restart: always
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
