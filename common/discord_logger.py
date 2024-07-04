@@ -14,13 +14,19 @@ role_pings = {
 
 class DiscordLogger():
     def __init__(self, url, name: str, logger_name=None):
-        self.url = url
+        if url is None or len(url) < 5:
+            print("No discord webhook url provided, disabling discord webhook logging")
+            self.url = None
+        else:
+            self.url = url
         self.name = name
         self.debug_lines = []
         self.logger = logging.getLogger(logger_name if logger_name is not None else name.replace(" ", "-").lower())
         self.logger.setLevel(logging.DEBUG)
 
     def send_message(self, level, msg, color):
+        if self.url is None:
+            return
         webhook = DiscordWebhook(url=self.url, username=self.name, content=role_pings[level])
         embed = DiscordEmbed(title=level, description=msg, color=color)
         embed.set_timestamp()
