@@ -1,7 +1,7 @@
 import logging
 from discord_webhook import DiscordWebhook, DiscordEmbed
 
-import logging
+logging.basicConfig()
 
 role_pings = {
     "ERROR": "<@&1246049260303024148>",
