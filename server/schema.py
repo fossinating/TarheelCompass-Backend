@@ -112,7 +112,8 @@ class ClassSchedule:
     def from_instance(cls, instance: ClassScheduleModel):
         return cls(
             instance=instance,
-            location=instance.location,
+            building=instance.building,
+            room=instance.room,
             days=instance.days,
             start_time=instance.start_time,
             end_time=instance.end_time,
