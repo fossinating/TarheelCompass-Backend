@@ -360,6 +360,7 @@ class PDFParser:
         self.state_logger = logging.getLogger("state_logger")
         # Set it to DEBUG for it to actually output anything at all
         self.state_logger.setLevel(logging.DEBUG)
+        self.state_logger.propagate = False
         state_log_handler = TimedRotatingFileHandler((pathlib.Path(
             __file__).parent / "logs" / "state.log").resolve(), when="midnight", backupCount=14)
         state_log_handler.suffix = "%Y%m%d"
