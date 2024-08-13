@@ -1,7 +1,6 @@
 import logging
+import sys
 from discord_webhook import DiscordWebhook, DiscordEmbed
-
-logging.basicConfig()
 
 role_pings = {
     "ERROR": "<@&1246049260303024148>",
@@ -23,6 +22,11 @@ class DiscordLogger():
         self.debug_lines = []
         self.logger = logging.getLogger(logger_name if logger_name is not None else name.replace(" ", "-").lower())
         self.logger.setLevel(logging.DEBUG)
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
 
     def send_message(self, level, msg, color):
         if self.url is None:
