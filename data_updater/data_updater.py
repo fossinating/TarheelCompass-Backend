@@ -467,6 +467,8 @@ class PDFParser:
             if line.startswith(self.pdf_split_line):
                 self.state = "first_line"
                 return
+        if line.startswith(self.pdf_split_line):
+            self.finish_class()
         if self.state == "first_line":
             # Since sometimes between pages there will be another header bit, detect this and don't throw an error,
             # just reset to the waiting state
@@ -709,18 +711,18 @@ class PDFParser:
                 self.class_obj.reserve_capacities = []
             self.class_obj.reserve_capacities.append(reserve_cap)
         if self.state == "notes":
-            if line.startswith(self.pdf_split_line):
-                self.state = "first_line"
-
-                self.db_session.add_all(self.extras)
-                if self.course is not None:
-                    self.db_session.add(self.course)
-                if not self.updating:
-                    self.db_session.add(self.class_obj)
-                logger.debug(f"{'Updating' if self.updating else 'Adding'} class {self.class_obj.course_id} - {self.class_obj.class_section} ({self.class_obj.class_number})")
-                return
             if len(line.strip()) > 0:
                 self.class_notes.append(line.strip)
+
+    def finish_class(self):
+        self.db_session.add_all(self.extras)
+        if self.course is not None:
+            self.db_session.add(self.course)
+        if not self.updating:
+            self.db_session.add(self.class_obj)
+        logger.debug(f"{'Updating' if self.updating else 'Adding'} class {self.class_obj.course_id} - {self.class_obj.class_section} ({self.class_obj.class_number})")
+        self.reset_state()
+        self.state = "first_line"
 
 
 # Read through the directory of class listings
