@@ -23,7 +23,7 @@ class DiscordLogger():
         self.logger = logging.getLogger(logger_name if logger_name is not None else name.replace(" ", "-").lower())
         self.logger.setLevel(logging.DEBUG)
         handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(logging.DEBUG)
+        handler.setLevel(logging.INFO)
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
