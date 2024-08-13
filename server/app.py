@@ -21,7 +21,8 @@ origins = [
     "http://localhost:8080",
     "http://localhost:80",
 ] if app.debug else [
-    "https://tarheelcompass.com"
+    "https://tarheelcompass.com",
+    "https://preview.tarheelcompass.pages.dev"
 ]
 
 graphql_app = GraphQLRouter(schema, graphiql=False)
