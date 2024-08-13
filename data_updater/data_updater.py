@@ -197,6 +197,10 @@ def process_class_search():
 
         terms.append(term)
 
+    logger.info("Waiting 15 seconds in an attempt to avoid triggering a rate limit.")
+    time.sleep(15)
+
+    logger.info("15 seconds have passed, requesting advanced search with all terms.")
     response = requests.get("https://reports.unc.edu/class-search/advanced_search/", params={
         "term": ", ".join(terms),
         "advanced": ", ".join(subjects)
