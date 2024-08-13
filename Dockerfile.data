@@ -1,4 +1,4 @@
-FROM common as builder
+FROM common AS builder
 
 COPY data_updater/requirements.txt ./data_requirements.txt
 RUN pip install -r data_requirements.txt

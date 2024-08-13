@@ -13,6 +13,7 @@ group "release" {
 
 target "common" {
   dockerfile = "Dockerfile.common"
+  platforms = ["linux/arm64/v8", "linux/amd64"]
 }
 
 target "data-dev" {
@@ -25,7 +26,7 @@ target "data-dev" {
 
 target "data-staging" {
   inherits = ["data-dev"]
-  platforms = ["linux/arm/v7", "linux/arm64/v8", "linux/amd64"]
+  platforms = ["linux/arm64/v8", "linux/amd64"]
   tags = ["ghcr.io/fossinating/tarheel-compass-data:staging"]
 }
 

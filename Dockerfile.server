@@ -1,4 +1,4 @@
-FROM common as builder
+FROM common AS builder
 
 COPY server/requirements.txt ./server_requirements.txt
 RUN pip install -r server_requirements.txt
