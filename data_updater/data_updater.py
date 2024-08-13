@@ -469,6 +469,7 @@ class PDFParser:
                 return
         if line.startswith(self.pdf_split_line):
             self.finish_class()
+            return
         if self.state == "first_line":
             # Since sometimes between pages there will be another header bit, detect this and don't throw an error,
             # just reset to the waiting state
