@@ -45,7 +45,7 @@ target "server-dev" {
 
 target "server-staging" {
   inherits = ["server-dev"]
-  platforms = ["linux/arm/v7", "linux/arm64/v8", "linux/amd64"]
+  platforms = ["linux/arm64/v8", "linux/amd64"]
   tags = ["ghcr.io/fossinating/tarheel-compass-server:staging"]
 }
 
