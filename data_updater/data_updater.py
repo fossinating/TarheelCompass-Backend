@@ -186,10 +186,10 @@ def process_class_search():
             db_session.add(TermData(name=term))
 
         term_data_source = db_session.scalar(
-            select(TermDataSource).filter_by(term_name=term, source="pdf"))
+            select(TermDataSource).filter_by(term_name=term, source="class search"))
         if term_data_source is None:
-            logger.warning(f"Found a new pdf term `{term}`, creating a new entry in term_data_source")
-            db_session.add(TermDataSource(source="pdf", term_name=term,
+            logger.warning(f"Found a new class search term `{term}`, creating a new entry in term_data_source")
+            db_session.add(TermDataSource(source="class search", term_name=term,
                            raw_term_name=raw_term, last_seen=timestamp, last_updated=timestamp))
         else:
             term_data_source.last_seen = timestamp
